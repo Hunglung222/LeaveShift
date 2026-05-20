@@ -304,7 +304,8 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
       滿半年：3 日；滿一年：7 日；滿二年：10 日；滿三至五年：14 日；滿五至十年：15 日；滿十年以上每年加 1 日，上限 30 日。<br><br>
       <strong>第 38 條第 4 項</strong>（遞延）<br>
       年度終結未休之日數，經勞雇協商得遞延，遞延日數於次年度請假時<strong>應優先扣除</strong>。<br><br>
-      <strong>無條件進位原則</strong>：時數計算結果無條件進位至請假單位，確保有利於勞工。
+      <strong>無條件進位原則</strong>：時數計算結果無條件進位至請假單位，確保有利於勞工。<br><br>
+      <strong>B 桶說明</strong>：B 桶為 2026 年度曆年制轉制結餘，保留至原年度終結日 2026/12/31；屆期未休部分依法結清，或經勞雇雙方協商遞延。
     </div>
   </div>
 </div>
@@ -317,6 +318,11 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 // ══════════════════════════════════════════
 let records = [];
 let lastResult = null;
+
+// XSS 防護：跳脫 HTML 特殊字元
+function esc(s){
+  return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
 
 // ══════════════════════════════════════════
 //  工具函式
@@ -374,7 +380,8 @@ function getUnitHours(unitVal, hpd){
 // 無條件進位至請假單位（有利勞工）
 function ceilToUnit(hours, unitH){
   if(hours<=0) return 0;
-  return Math.ceil(hours/unitH)*unitH;
+  // 加容忍值避免 JS 浮點誤差（如 53.5000000001 被 ceil 成 54）
+  return Math.round(Math.ceil((hours-1e-9)/unitH)*unitH*100)/100;
 }
 
 // 請假單位文字
@@ -409,6 +416,10 @@ function doCalc(){
   if(!hireDateVal)  return alert('請輸入到職日');
   if(!transDateVal) return alert('請輸入轉制生效日');
   if(bHoursRaw==='') return alert('請輸入 B 桶時數（若無填 0）');
+  // 驗證到職日不可晚於轉制日
+  if(pd(hireDateVal) > pd(transDateVal)){
+    return alert('到職日不可晚於轉制生效日，請重新確認。');
+  }
 
   const bHours = parseFloat(bHoursRaw);
   const hire   = pd(hireDateVal);
@@ -503,6 +514,14 @@ function doCalc(){
     const seg2Total=aHours+bHours+suppHours.hours;
     const seg2Rounded=ceilToUnit(seg2Total,unitH);
 
+    // 情況二：active=A+B(5/1轉入)，future=補給(1/1)，分開儲存避免誤用
+    const ab_raw2     = aHours + bHours;
+    const ab_round2   = ceilToUnit(ab_raw2, unitH);
+    const supp_raw2   = suppHours.hours;
+    const supp_round2 = ceilToUnit(supp_raw2, unitH);
+    const total2_raw  = ab_raw2 + supp_raw2;
+    const total2_round= ceilToUnit(total2_raw, unitH);
+
     segments=[
       {
         type:'expired',
@@ -518,25 +537,44 @@ function doCalc(){
       {
         type:'active',
         annivStart:curAnnivStart,annivEnd:curAnnivEnd,yearN:curYearN,
-        label:'當前週年區間（B 桶＋補給）',
+        label:'5/1 轉入（A桶＋B桶）',
         rows:[
           {label:'A 桶（延長）',val:`${aHours} H`,note:`到期 ${fmt(aExp)}`},
-          {label:'B 桶（年度）',val:`${bHours} H`,note:`含 ${fmtShort(curAnnivStart)}~12/31 段`},
-          {label:`補給(1/1~${fmtShort(curAnnivEnd)})`,val:`+${suppHours.hours.toFixed(2)} H`,
-            note:`${suppHours.ovlp}/${suppHours.denom}天，${nextCalYear}/1/1補入`},
+          {label:'B 桶（年度）',val:`${bHours} H`,note:`含${fmtShort(curAnnivStart)}~12/31段`},
         ],
-        totalRaw:seg2Total,totalRounded:seg2Rounded,unitH,uLabel,
-        totalNote:`A桶+B桶+${nextCalYear}/1/1補給，扣假順序：A→B→補給`,
+        totalRaw:ab_raw2,totalRounded:ab_round2,unitH,uLabel,
+        totalNote:`5/1 轉入可用（A+B），扣假順序：A→B`,
         formula:[
+          `// 5/1 當日轉入，可立即使用`,
           `A桶              : ${aHours} H`,
-          `B桶(含${fmtShort(curAnnivStart)}~12/31) : ${bHours} H`,
-          `後半補給範圍     : ${fmt(nextCalS)} ~ ${fmt(curAnnivEnd)}`,
-          `補給天數         : ${suppHours.ovlp} / ${suppHours.denom}`,
-          `補給時數         : ${lawDays(curYearN)}天×${hpd}H×(${suppHours.ovlp}/${suppHours.denom})`,
-          `                = ${suppHours.hours.toFixed(2)} H`,
-          `小計(精確)       : ${seg2Total.toFixed(2)} H`,
-          `無條件進位(${uLabel}): ${seg2Rounded.toFixed(2)} H`,
+          `B桶              : ${bHours} H`,
+          `轉入合計(精確)   : ${ab_raw2.toFixed(2)} H`,
+          `無條件進位(${uLabel}): ${ab_round2.toFixed(2)} H`,
         ]
+      },
+      {
+        type:'future',
+        annivStart:nextCalS,annivEnd:curAnnivEnd,yearN:curYearN,
+        label:`${nextCalYear}/01/01 補給（週年後半段）`,
+        rows:[
+          {label:`法定(滿${curYearN}年)`,val:`${lawDays(curYearN)*hpd} H`,note:`${lawDays(curYearN)}日×${hpd}H`},
+          {label:'補給範圍',val:`${fmt(nextCalS)}~${fmtShort(curAnnivEnd)}`,note:`${suppHours.ovlp}/${suppHours.denom}天`},
+        ],
+        totalRaw:supp_raw2,totalRounded:supp_round2,unitH,uLabel,
+        totalNote:`${nextCalYear}/01/01 補入系統（僅補此數字，非補後合計）`,
+        formula:[
+          `// B桶已含本週年起~12/31前半段；隔年1/1補後半段`,
+          `補給範圍         : ${fmt(nextCalS)} ~ ${fmt(curAnnivEnd)}`,
+          `補給天數         : ${suppHours.ovlp} / ${suppHours.denom}`,
+          `補給時數(精確)   : ${lawDays(curYearN)}天×${hpd}H×(${suppHours.ovlp}/${suppHours.denom})`,
+          `                = ${supp_raw2.toFixed(2)} H`,
+          `補給進位(${uLabel}): ${supp_round2.toFixed(2)} H  ← 這個數字補入系統`,
+          ``,
+          `補後合計(精確)   : ${ab_raw2.toFixed(2)} + ${supp_raw2.toFixed(2)} = ${total2_raw.toFixed(2)} H`,
+          `補後合計(進位)   : ${total2_round.toFixed(2)} H  ← 僅供參考，勿補入此數`,
+        ],
+        afterTotal: total2_round,
+        afterTotalRaw: total2_raw,
       }
     ];
   }
@@ -567,7 +605,7 @@ function renderResult(d){
     caseTitle.textContent='情況一：轉制日尚未到達週年日';
     caseBody.innerHTML=`<span class="case-badge case-1">情況一</span>
       <p style="font-size:14px;line-height:1.9;color:var(--ink2);">
-        <strong>${d.empName}</strong> 到職日 <strong>${d.hire}</strong>，轉制日 <strong>${d.trans}</strong> 時，
+        <strong>${esc(d.empName)}</strong> 到職日 <strong>${d.hire}</strong>，轉制日 <strong>${d.trans}</strong> 時，
         本年到職週年日 <strong style="color:var(--teal);">${d.annivThisYear}</strong> 尚未到達。<br><br>
         ✅ B 桶已含週年日後那段的比例時數，週年日到達時補給差額（非全額）。<br>
         ⚠ 基準結算日：<strong>${d.baseDate}</strong>
@@ -576,7 +614,7 @@ function renderResult(d){
     caseTitle.textContent='情況二：轉制日已超過週年日';
     caseBody.innerHTML=`<span class="case-badge case-2">情況二</span>
       <p style="font-size:14px;line-height:1.9;color:var(--ink2);">
-        <strong>${d.empName}</strong> 到職日 <strong>${d.hire}</strong>，轉制日 <strong>${d.trans}</strong> 時，
+        <strong>${esc(d.empName)}</strong> 到職日 <strong>${d.hire}</strong>，轉制日 <strong>${d.trans}</strong> 時，
         本年到職週年日 <strong style="color:var(--purple);">${d.annivThisYear}</strong> 已過。
         目前處於 <strong style="color:var(--purple);">滿 ${d.curYearN} 年</strong>的週年區間。<br><br>
         ✅ B 桶含本週年日後那段；隔年 1/1 起補入後半段時數。前一個週年區間已到期不補給。<br>
@@ -587,28 +625,56 @@ function renderResult(d){
   // 總覽
   const strip=document.getElementById('total-strip');
   const mainSeg=d.segments.find(s=>s.type==='active');
-  const roundedTotal=mainSeg?mainSeg.totalRounded:0;
-  strip.innerHTML=`
-    <div class="total-seg">
-      <div class="seg-label">A 桶（延長）</div>
-      <div class="seg-num c-teal">${d.aHours}</div>
-      <div class="seg-unit">小時</div>
-    </div>
-    <div class="total-seg">
-      <div class="seg-label">B 桶（年度）</div>
-      <div class="seg-num c-gold">${d.bHours}</div>
-      <div class="seg-unit">小時</div>
-    </div>
-    <div class="total-seg">
-      <div class="seg-label">轉入總可用</div>
-      <div class="seg-num c-white">${(d.aHours+d.bHours).toFixed(1)}</div>
-      <div class="seg-unit">小時（轉制當日）</div>
-    </div>
-    <div class="total-seg">
-      <div class="seg-label">進位後給假</div>
-      <div class="seg-num c-green">${roundedTotal.toFixed(1)}</div>
-      <div class="seg-unit">小時（${d.uLabel}）</div>
-    </div>`;
+  const futureSeg=d.segments.find(s=>s.type==='future');
+  const ab_rounded = mainSeg?mainSeg.totalRounded:0;
+
+  let stripHTML='';
+  if(d.case1){
+    // 情況一：A桶 + B桶 = 轉入總額 | 週年日補給
+    const suppRound = futureSeg?futureSeg.totalRounded:0;
+    stripHTML=`
+      <div class="total-seg">
+        <div class="seg-label">A 桶（延長）</div>
+        <div class="seg-num c-teal">${d.aHours}</div>
+        <div class="seg-unit">小時</div>
+      </div>
+      <div class="total-seg">
+        <div class="seg-label">B 桶（年度）</div>
+        <div class="seg-num c-gold">${d.bHours}</div>
+        <div class="seg-unit">小時</div>
+      </div>
+      <div class="total-seg">
+        <div class="seg-label">5/1 轉入總額（進位）</div>
+        <div class="seg-num c-white">${ab_rounded.toFixed(1)}</div>
+        <div class="seg-unit">小時</div>
+      </div>
+      <div class="total-seg">
+        <div class="seg-label">週年日補給（進位）</div>
+        <div class="seg-num c-green">${suppRound.toFixed(1)}</div>
+        <div class="seg-unit">小時</div>
+      </div>`;
+  } else {
+    // 情況二：5/1轉入 | 補給時數 | 補後合計
+    const suppRound2 = futureSeg?futureSeg.totalRounded:0;
+    const afterTotal = futureSeg&&futureSeg.afterTotal?futureSeg.afterTotal:(ab_rounded+suppRound2);
+    stripHTML=`
+      <div class="total-seg">
+        <div class="seg-label">5/1 轉入（A+B，進位）</div>
+        <div class="seg-num c-teal">${ab_rounded.toFixed(1)}</div>
+        <div class="seg-unit">小時</div>
+      </div>
+      <div class="total-seg">
+        <div class="seg-label">2027/1/1 補給（進位）</div>
+        <div class="seg-num c-gold">${suppRound2.toFixed(1)}</div>
+        <div class="seg-unit">小時</div>
+      </div>
+      <div class="total-seg">
+        <div class="seg-label">補後合計（進位）</div>
+        <div class="seg-num c-green">${afterTotal.toFixed(1)}</div>
+        <div class="seg-unit">小時</div>
+      </div>`;
+  }
+  strip.innerHTML=stripHTML;
 
   // 時間軸
   const tlBody=document.getElementById('timeline-body');
@@ -679,7 +745,7 @@ function renderResult(d){
     {i:'📐',t:`所有時數計算保留小數點二位，最終給假時無條件進位至 <strong>${d.uLabel}</strong>，確保有利於勞工。`},
     {i:'📅',t:d.case1
       ?`週年日 <strong>${d.annivThisYear}</strong> 到達時，補給差額（非全額），見上方公式。`
-      :`隔年 1/1 起補入本週年後半段時數，見上方公式，需在系統建立補給紀錄。`},
+      :`隔年 <strong>2027/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br>⚠ 補後合計 = 5/1轉入 + 補給，<strong>請勿直接補入補後合計數字</strong>。`},
     {i:'✅',t:`確認基準結算日 <strong>${d.baseDate}</strong> 到建檔日之間是否有人請假，若有需先還原後再建帳。`},
   ];
   rb.innerHTML=`<ul class="remind-list">${items.map(r=>`<li><span class="ri">${r.i}</span><span>${r.t}</span></li>`).join('')}</ul>`;
@@ -710,12 +776,17 @@ function saveRecord(){
     hpd:      r.hpd,
     uLabel:   r.uLabel,
     caseType: r.case1?'情況一':'情況二',
+    // 5/1 轉入（情況一=A+B，情況二=A+B）
     seg1Range: mainSeg?`${fmt(mainSeg.annivStart)}~${fmt(mainSeg.annivEnd)}`:'',
     seg1Raw:   mainSeg?mainSeg.totalRaw:0,
     seg1Round: mainSeg?mainSeg.totalRounded:0,
-    seg2Range: suppSeg?`${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}`:'',
+    // 補給時數（情況一=週年日補給；情況二=1/1補給）
+    seg2Range: suppSeg?`${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}`:'—',
     seg2Raw:   suppSeg?suppSeg.totalRaw:0,
     seg2Round: suppSeg?suppSeg.totalRounded:0,
+    // 補後合計（情況一不適用；情況二=A+B+補給）
+    afterTotal: (suppSeg&&suppSeg.afterTotal)?suppSeg.afterTotal:
+                (mainSeg?(mainSeg.totalRounded+(suppSeg?suppSeg.totalRounded:0)):0),
     savedAt:  new Date().toLocaleString('zh-TW'),
     _restore:{
       empName:   (r.empName==='該員工')?'':r.empName,
@@ -748,7 +819,7 @@ function renderRecords(){
       <div class="rec-info">
         <div class="rec-name">
           <span class="rec-badge ${r.caseType==='情況一'?'c1':'c2'}">${r.caseType}</span>
-          ${r.empName}
+          ${esc(r.empName)}
           <span style="font-size:11px;color:#aaa;margin-left:6px;">（點擊還原）</span>
         </div>
         <div class="rec-meta">
@@ -806,9 +877,9 @@ function exportXLSX(){
   const summaryRows=[
     ['#','員工姓名','到職日','轉制日','基準結算日','情況類型',
      'A桶(H)','B桶(H)','A桶到期日','每日工時','請假單位',
-     '段一區間','段一精確(H)','段一進位(H)',
-     '段二區間','段二精確(H)','段二進位(H)',
-     '儲存時間']
+     '5/1轉入區間','5/1轉入精確(H)','5/1轉入進位(H)',
+     '補給日/補給區間','補給精確(H)','補給進位(H)',
+     '補後合計進位(H)','儲存時間']
   ];
   records.forEach((r,i)=>{
     summaryRows.push([
@@ -821,6 +892,7 @@ function exportXLSX(){
       r.seg2Range||'—',
       r.seg2Raw!==null?parseFloat(r.seg2Raw.toFixed(2)):0,
       r.seg2Round!==null?parseFloat(r.seg2Round.toFixed(2)):0,
+      r.afterTotal?parseFloat(r.afterTotal.toFixed(2)):(r.seg1Round+(r.seg2Round||0)),
       r.savedAt
     ]);
   });
