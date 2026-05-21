@@ -904,9 +904,10 @@ function saveRecord(){
     seg1Range: mainSeg?`${fmt(mainSeg.annivStart)}~${fmt(mainSeg.annivEnd)}`:'',
     seg1Raw:   mainSeg?mainSeg.totalRaw:0,
     seg1Round: mainSeg?mainSeg.totalRounded:0,
-    seg2Range: suppSeg?`${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}`:'—',
-    seg2Raw:   suppSeg?suppSeg.totalRaw:0,
-    seg2Round: suppSeg?suppSeg.totalRounded:0,
+    seg2Range: suppSeg && suppSeg.annivStart <= suppSeg.annivEnd
+                ? `${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}` : '—',
+    seg2Raw:   suppSeg && suppSeg.annivStart <= suppSeg.annivEnd ? suppSeg.totalRaw   : 0,
+    seg2Round: suppSeg && suppSeg.annivStart <= suppSeg.annivEnd ? suppSeg.totalRounded : 0,
     afterTotal: (suppSeg&&suppSeg.afterTotal)?suppSeg.afterTotal:
                 (mainSeg?(mainSeg.totalRounded+(suppSeg?suppSeg.totalRounded:0)):0),
     savedAt:  new Date().toLocaleString('zh-TW'),
@@ -1428,9 +1429,10 @@ function calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel){
     seg1Range: `${fmt(mainSeg.annivStart)}~${fmt(mainSeg.annivEnd)}`,
     seg1Raw:   mainSeg.totalRaw,
     seg1Round: mainSeg.totalRounded,
-    seg2Range: `${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}`,
-    seg2Raw:   suppSeg.totalRaw,
-    seg2Round: suppSeg.totalRounded,
+    seg2Range: suppSeg.annivStart <= suppSeg.annivEnd
+                ? `${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}` : '—',
+    seg2Raw:   suppSeg.annivStart <= suppSeg.annivEnd ? suppSeg.totalRaw    : 0,
+    seg2Round: suppSeg.annivStart <= suppSeg.annivEnd ? suppSeg.totalRounded : 0,
     afterTotal: suppSeg.afterTotal,
     savedAt:   new Date().toLocaleString('zh-TW'),
     _restore:{
