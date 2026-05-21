@@ -208,7 +208,7 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
   <div class="header-badge">人資顧問工具</div>
   <h1>特休制度轉換計算器<br><span>曆年制 → 週年制</span></h1>
   <div class="header-sub">餘額移轉法｜自動判斷情況一/二｜無條件進位至請假單位｜支援多員工儲存 &amp; 匯出 XLSX
-    <span class="ver-tag">v4</span>
+    <span class="ver-tag">v5</span>
   </div>
 </div>
 
@@ -316,11 +316,11 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 
     <div class="field-row">
       <div><div class="field-label">員工姓名</div><div class="field-hint">選填</div></div>
-      <div class="field-input"><input type="text" id="empName" placeholder="例：林大龍"></div>
+      <div class="field-input"><input type="text" id="empName" placeholder="選填，空白自動帶入「員工01」"></div>
     </div>
     <div class="field-row">
       <div><div class="field-label">員工編號</div><div class="field-hint">選填</div></div>
-      <div class="field-input"><input type="text" id="empId" placeholder="例：33725"></div>
+      <div class="field-input"><input type="text" id="empId" placeholder="選填，空白自動帶入「00001」"></div>
     </div>
     <div class="field-row">
       <div><div class="field-label">到職日 *</div></div>
@@ -808,6 +808,8 @@ function renderResult(d){
 
   let tlHTML='';
   d.segments.forEach((seg,idx)=>{
+    // 跳過反向無效的 future segment（1/1到職情況二：補給=0，起始>結束）
+    if(seg.type==='future' && seg.annivStart > seg.annivEnd) return;
     const isLast=idx===d.segments.length-1;
     let rowsHTML=seg.rows.map(r=>`
       <div class="tl-card-row">
@@ -870,7 +872,9 @@ function renderResult(d){
     // [v4-fix BUG-7] 動態顯示補給年份
     {i:'📅',t:d.case1
       ?`週年日 <strong>${d.annivThisYear}</strong> 到達時，補給差額（非全額），見上方公式。`
-      :`隔年 <strong>${nextCalYear}/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br><span style="color:var(--red);font-weight:700;">⚠ 補後合計 = 5/1轉入 + 補給，請勿直接補入補後合計數字。</span>`},
+      : (futureSeg && futureSeg.totalRounded > 0)
+        ? `隔年 <strong>${nextCalYear}/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br><span style="color:var(--red);font-weight:700;">⚠ 補後合計 = 5/1轉入 + 補給，請勿直接補入補後合計數字。</span>`
+        : `此員工週年日與曆年一致（1/1到職），<strong>補給時數 = 0H</strong>，無需額外補給作業。`},
     {i:'✅',t:`確認基準結算日 <strong>${d.baseDate}</strong> 到建檔日之間是否有人請假，若有需先還原後再建帳。`},
   ];
   rb.innerHTML=`<ul class="remind-list">${items.map(r=>`<li><span class="ri">${r.i}</span><span>${r.t}</span></li>`).join('')}</ul>`;
@@ -889,9 +893,10 @@ function saveRecord(){
   const autoName = (r.empName && r.empName!=='該員工')
     ? r.empName
     : `員工${String(records.length+1).padStart(2,'0')}`;
+  const autoId = r.empId || String(records.length+1).padStart(5,'0');
   const rec={
     empName:  autoName,
-    empId:    r.empId||'',
+    empId:    autoId,
     hire:     r.hire,
     trans:    r.trans,
     baseDate: r.baseDate,
@@ -1074,7 +1079,7 @@ function exportShineTaCloud(){
 }
 
 // ══════════════════════════════════════════
-//  匯出 XLSX — [v4-fix BUG-4] 補齊欄寬（19欄）
+//  匯出 XLSX（v5：含員工編號欄）
 // ══════════════════════════════════════════
 function exportXLSX(){
   if(!records.length){ alert('目前沒有記錄可匯出。'); return; }
@@ -1082,7 +1087,7 @@ function exportXLSX(){
   const wb = XLSX.utils.book_new();
 
   const summaryRows=[
-    ['#','員工姓名','到職日','轉制日','基準結算日','情況類型',
+    ['#','員工編號','員工姓名','到職日','轉制日','基準結算日','情況類型',
      'A桶(H)','B桶(H)','A桶到期日','每日工時','請假單位',
      '5/1轉入區間','5/1轉入精確(H)','5/1轉入進位(H)',
      '補給日/補給區間','補給精確(H)','補給進位(H)',
@@ -1091,7 +1096,7 @@ function exportXLSX(){
   records.forEach((r,i)=>{
     summaryRows.push([
       records.length-i,
-      r.empName, r.hire, r.trans, r.baseDate, r.caseType,
+      r.empId||'', r.empName, r.hire, r.trans, r.baseDate, r.caseType,
       r.aHours, r.bHours, r.aExp, r.hpd, r.uLabel,
       r.seg1Range,
       r.seg1Raw!==null?parseFloat(r.seg1Raw.toFixed(2)):0,
@@ -1105,9 +1110,9 @@ function exportXLSX(){
   });
   const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
 
-  // [v4-fix BUG-4] 19欄欄寬（標頭19欄，欄寬也19個）
+  // 20 欄（加入員工編號欄）
   ws1['!cols']=[
-    {wch:4},{wch:14},{wch:12},{wch:12},{wch:12},{wch:10},
+    {wch:4},{wch:12},{wch:14},{wch:12},{wch:12},{wch:12},{wch:10},
     {wch:8},{wch:8},{wch:12},{wch:8},{wch:16},
     {wch:22},{wch:12},{wch:12},
     {wch:22},{wch:12},{wch:12},
@@ -1240,8 +1245,8 @@ function parseImportRows(rows){
       if(aExpFromNote && !emp.aExp) emp.aExp = aExpFromNote;
     }
 
-    // 驗證日期格式
-    if(!hireDateRaw.match(/^\d{4}\/\d{2}\/\d{2}$/)){
+    // 驗證日期格式（接受 YYYY/MM/DD 或 YYYY-MM-DD）
+    if(!hireDateRaw.match(/^\d{4}[\/\-]\d{2}[\/\-]\d{2}$/)){
       emp.warn.push('到職日格式異常');
     }
   }
@@ -1335,6 +1340,11 @@ function runBatchCalc(){
       txt.textContent=`✅ 完成！已加入 ${total} 筆記錄`;
       bar.style.width='100%';
       renderRecords();
+      // 加入快速匯出震旦雲按鈕
+      txt.innerHTML=`✅ 完成！已加入 ${total} 筆記錄　
+        <button onclick="exportShineTaCloud()" style="background:var(--purple);color:#fff;border:none;border-radius:5px;padding:5px 14px;font-family:'Noto Sans TC',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-left:8px;">
+          ☁️ 立即匯出震旦雲格式
+        </button>`;
       document.getElementById('records-area').scrollIntoView({behavior:'smooth'});
       return;
     }
@@ -1356,8 +1366,9 @@ function runBatchCalc(){
 // 單筆計算並推入 records（不顯示 UI）
 function calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel){
   const {empId, empName, hireDateVal, aHours, bHours, aExpVal} = row;
-  // 姓名和編號分開存，不合併
-  const nameDisplay = empName || empId || `員工${String(records.length+1).padStart(2,'0')}`;
+  // 姓名和編號分開，各自有備援
+  const nameDisplay = empName || `員工${String(records.length+1).padStart(2,'0')}`;
+  const idDisplay   = empId   || String(records.length+1).padStart(5,'0');
 
   if(!hireDateVal || pd(hireDateVal) > pd(transDateVal)) return;
 
@@ -1418,7 +1429,7 @@ function calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel){
 
   records.push({
     empName:   nameDisplay,
-    empId:     empId||'',
+    empId:     idDisplay,
     hire:      fmt(hire),
     trans:     fmt(trans),
     baseDate:  fmt(baseDate),
@@ -1437,7 +1448,7 @@ function calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel){
     savedAt:   new Date().toLocaleString('zh-TW'),
     _restore:{
       empName:  nameDisplay,
-      empId:    empId||'',
+      empId:    idDisplay,
       hireDate: hireDateVal,
       transDate:transDateVal,
       aHours, bHours,
