@@ -14,6 +14,7 @@
   --red:#b83232;--red3:#fde8e8;
   --green:#1e7a45;--green3:#e6f5ec;
   --purple:#5b3e9e;--purple3:#ece6f8;
+  --orange:#c05a00;--orange3:#fff0e0;
   --border:#ddd5c0;--shadow:0 4px 24px rgba(15,25,35,.10);--r:10px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -26,18 +27,22 @@ body{font-family:'Noto Sans TC',sans-serif;background:var(--paper);color:var(--i
 .site-header h1{font-family:'Noto Serif TC',serif;font-size:26px;font-weight:900;color:#fff;line-height:1.35;position:relative;z-index:1;}
 .site-header h1 span{color:var(--gold2);}
 .header-sub{font-size:12px;color:rgba(255,255,255,.55);margin-top:6px;position:relative;z-index:1;}
+.ver-tag{display:inline-block;font-size:10px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7);padding:2px 8px;border-radius:3px;margin-left:8px;vertical-align:middle;}
 
 .main{max-width:820px;margin:0 auto;padding:28px 20px 0;}
 
 .card{background:#fff;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:20px;overflow:hidden;}
 .card-head{background:var(--ink2);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:10px;}
 .card-head .step-badge{background:var(--teal2);font-size:10px;font-weight:700;letter-spacing:2px;padding:3px 9px;border-radius:3px;}
+.card-head .step-badge.import-badge{background:var(--orange);}
 .card-head h2{font-size:15px;font-weight:700;}
 .card-head p{font-size:12px;color:rgba(255,255,255,.6);margin-left:auto;}
 .card-body{padding:20px 22px;}
 
 .info-box{background:var(--teal3);border-left:4px solid var(--teal2);border-radius:0 6px 6px 0;padding:13px 16px;font-size:13px;line-height:1.8;margin-bottom:18px;color:var(--ink2);}
 .info-box strong{color:var(--teal);}
+.info-box.orange-box{background:var(--orange3);border-left-color:var(--orange);}
+.info-box.orange-box strong{color:var(--orange);}
 
 .field-row{display:grid;grid-template-columns:170px 1fr;gap:0 16px;align-items:center;padding:11px 0;border-bottom:1px solid var(--warm);}
 .field-row:last-child{border-bottom:none;}
@@ -61,6 +66,42 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 .btn-calc:hover{background:var(--teal2);transform:translateY(-1px);}
 .btn-reset{background:var(--warm);color:var(--ink2);border:1.5px solid var(--border);border-radius:8px;font-family:'Noto Sans TC',sans-serif;font-size:14px;font-weight:600;padding:14px 20px;cursor:pointer;transition:.15s;}
 .btn-reset:hover{background:var(--border);}
+
+/* 匯入區塊 */
+.import-zone{border:2px dashed var(--border);border-radius:8px;padding:28px 20px;text-align:center;cursor:pointer;transition:.2s;background:#faf9f5;position:relative;}
+.import-zone:hover,.import-zone.drag-over{border-color:var(--orange);background:var(--orange3);}
+.import-zone .iz-icon{font-size:36px;margin-bottom:10px;}
+.import-zone .iz-title{font-size:15px;font-weight:700;color:var(--ink2);margin-bottom:4px;}
+.import-zone .iz-sub{font-size:12px;color:#999;}
+#importFileInput{display:none;}
+.btn-import-manual{background:var(--orange);color:#fff;border:none;border-radius:7px;font-family:'Noto Sans TC',sans-serif;font-size:14px;font-weight:700;padding:10px 22px;cursor:pointer;margin-top:14px;display:inline-flex;align-items:center;gap:7px;transition:.15s;}
+.btn-import-manual:hover{background:#a04800;}
+
+.import-settings{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--warm);}
+.import-settings .field-label{font-size:12px;}
+
+.import-preview{margin-top:16px;display:none;}
+.preview-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;}
+.preview-head h3{font-size:14px;font-weight:700;color:var(--ink2);}
+.preview-count{font-size:12px;color:#888;}
+.preview-count strong{color:var(--ink);}
+.import-table-wrap{overflow-x:auto;border-radius:6px;border:1px solid var(--border);}
+.import-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.import-table th{background:var(--ink2);color:#fff;padding:8px 10px;font-weight:600;text-align:left;white-space:nowrap;}
+.import-table td{padding:7px 10px;border-bottom:1px solid var(--warm);color:var(--ink);vertical-align:middle;}
+.import-table tr:last-child td{border-bottom:none;}
+.import-table tr:hover td{background:var(--teal3);}
+.import-table .warn-cell{color:var(--red);font-size:11px;}
+.import-table .ok-cell{color:var(--green);}
+.import-table .a-cell{color:var(--gold);font-weight:600;}
+
+.btn-run-import{background:var(--green);color:#fff;border:none;border-radius:7px;font-family:'Noto Sans TC',sans-serif;font-size:14px;font-weight:700;padding:10px 22px;cursor:pointer;margin-top:12px;display:inline-flex;align-items:center;gap:7px;transition:.15s;}
+.btn-run-import:hover{background:#16a34a;}
+
+.import-progress{margin-top:12px;display:none;}
+.progress-bar-wrap{background:var(--warm);border-radius:4px;height:8px;margin-top:6px;}
+.progress-bar{background:var(--teal2);height:8px;border-radius:4px;transition:width .15s;}
+.progress-text{font-size:12px;color:#888;margin-top:4px;}
 
 /* 結果區 */
 #result-area{display:none;}
@@ -104,8 +145,6 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 .tl-card.seg-future{background:var(--gold3);border-color:#d4aa50;}
 .tl-card.seg-future .total-val{color:var(--gold);}
 .tl-card.seg-expired{background:#f5f5f5;border-color:#ddd;opacity:.7;}
-.tl-card.seg-supplement{background:var(--purple3);border-color:#a080d0;}
-.tl-card.seg-supplement .total-val{color:var(--purple);}
 
 .formula-box{background:var(--ink);border-radius:8px;padding:16px 20px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:2;color:#b0c8c8;margin-top:10px;}
 .formula-box .f-comment{color:#507050;}
@@ -113,12 +152,10 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 .formula-box .f-label{color:var(--teal2);}
 .formula-box .f-result{color:#ff9966;font-weight:700;}
 
-/* 儲存按鈕 */
 .save-bar{display:flex;justify-content:flex-end;margin-top:14px;}
 .btn-save{background:var(--green);color:#fff;border:none;border-radius:7px;font-family:'Noto Sans TC',sans-serif;font-size:14px;font-weight:700;padding:10px 22px;cursor:pointer;display:flex;align-items:center;gap:7px;transition:.15s;}
 .btn-save:hover{background:#16a34a;}
 
-/* 操作提醒 */
 .remind-list{list-style:none;display:flex;flex-direction:column;gap:8px;margin-top:4px;}
 .remind-list li{display:flex;align-items:flex-start;gap:10px;background:var(--warm);border-radius:6px;padding:10px 14px;font-size:13px;}
 .remind-list li .ri{flex-shrink:0;font-size:16px;}
@@ -161,6 +198,7 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
   .site-header{padding:22px 18px;}
   .main{padding:18px 12px 0;}
   .card-body{padding:16px 14px;}
+  .import-settings{grid-template-columns:1fr;}
 }
 </style>
 </head>
@@ -169,10 +207,94 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 <div class="site-header">
   <div class="header-badge">人資顧問工具</div>
   <h1>特休制度轉換計算器<br><span>曆年制 → 週年制</span></h1>
-  <div class="header-sub">餘額移轉法｜自動判斷情況一/二｜無條件進位至請假單位｜支援多員工儲存 & 匯出 XLSX</div>
+  <div class="header-sub">餘額移轉法｜自動判斷情況一/二｜無條件進位至請假單位｜支援多員工儲存 &amp; 匯出 XLSX
+    <span class="ver-tag">v4</span>
+  </div>
 </div>
 
 <div class="main">
+
+<!-- ══ 匯入 XLSX ══ -->
+<div class="card anim">
+  <div class="card-head">
+    <span class="step-badge import-badge">匯入</span>
+    <h2>批次匯入 XLSX — 年度特休一覽表</h2>
+    <p>自動讀取 A桶/B桶</p>
+  </div>
+  <div class="card-body">
+    <div class="info-box orange-box">
+      <strong>📂 支援格式</strong>：人資系統匯出的「年度特休一覽表」XLSX（衝刺雲端 / 同格式系統）<br>
+      自動識別欄位：員工編號、姓名、年資到職日、延長時數（A桶）、年度未休（B桶）、備註中的到期日<br>
+      <strong>⚠ 注意</strong>：B 桶讀取「未休(時)」欄（已扣除已請假時數），請確認匯出日為轉制前一天。
+    </div>
+
+    <!-- 匯入設定 -->
+    <div class="import-settings">
+      <div>
+        <div class="field-label" style="margin-bottom:5px;">轉制生效日 *</div>
+        <input type="date" id="imp-transDate" value="2026-05-01">
+      </div>
+      <div>
+        <div class="field-label" style="margin-bottom:5px;">每日工時</div>
+        <input type="number" id="imp-hpd" value="8" min="1" max="12">
+      </div>
+      <div>
+        <div class="field-label" style="margin-bottom:5px;">請假單位</div>
+        <select id="imp-leaveUnit">
+          <option value="0.5">0.5 小時</option>
+          <option value="1">1 小時</option>
+          <option value="4" selected>半天（每日工時÷2）</option>
+          <option value="8">全天（每日工時）</option>
+        </select>
+      </div>
+      <div>
+        <div class="field-label" style="margin-bottom:5px;">預設 A 桶到期日</div>
+        <input type="date" id="imp-aExpiry" value="2026-12-31">
+        <span class="input-hint" style="margin-top:3px;">備註欄有日期時優先使用備註</span>
+      </div>
+    </div>
+
+    <!-- 拖放區 -->
+    <div class="import-zone" id="importZone" onclick="document.getElementById('importFileInput').click()"
+         ondragover="event.preventDefault();this.classList.add('drag-over')"
+         ondragleave="this.classList.remove('drag-over')"
+         ondrop="handleDrop(event)">
+      <div class="iz-icon">📊</div>
+      <div class="iz-title">點擊或拖放 XLSX 至此</div>
+      <div class="iz-sub">支援年度特休一覽表格式</div>
+      <button class="btn-import-manual" onclick="event.stopPropagation();document.getElementById('importFileInput').click()">
+        📂 選擇檔案
+      </button>
+    </div>
+    <input type="file" id="importFileInput" accept=".xlsx,.xls" onchange="handleImportFile(this.files[0])">
+
+    <!-- 預覽表格 -->
+    <div class="import-preview" id="importPreview">
+      <div class="preview-head">
+        <h3>解析結果預覽</h3>
+        <div class="preview-count">共 <strong id="imp-count">0</strong> 位員工，<strong id="imp-warn-count" style="color:var(--red)">0</strong> 筆警告</div>
+      </div>
+      <div class="import-table-wrap">
+        <table class="import-table" id="importTable">
+          <thead>
+            <tr>
+              <th>#</th><th>員工編號</th><th>姓名</th><th>到職日</th>
+              <th>A桶(H)</th><th>A桶到期</th><th>B桶(H)</th><th>狀態</th>
+            </tr>
+          </thead>
+          <tbody id="importTableBody"></tbody>
+        </table>
+      </div>
+      <button class="btn-run-import" onclick="runBatchCalc()">
+        ▶ 全部計算並加入記錄（<span id="imp-run-count">0</span> 筆）
+      </button>
+      <div class="import-progress" id="importProgress">
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+        <div class="progress-text" id="progressText">計算中...</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- 輸入 -->
 <div class="card anim">
@@ -305,12 +427,12 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
       <strong>第 38 條第 4 項</strong>（遞延）<br>
       年度終結未休之日數，經勞雇協商得遞延，遞延日數於次年度請假時<strong>應優先扣除</strong>。<br><br>
       <strong>無條件進位原則</strong>：時數計算結果無條件進位至請假單位，確保有利於勞工。<br><br>
-      <strong>B 桶說明</strong>：B 桶為 2026 年度曆年制轉制結餘，保留至原年度終結日 2026/12/31；屆期未休部分依法結清，或經勞雇雙方協商遞延。
+      <strong>B 桶說明</strong>：B 桶為本年度曆年制轉制結餘，保留至原年度終結日；屆期未休部分依法結清，或經勞雇雙方協商遞延。
     </div>
   </div>
 </div>
 
-</div>
+</div><!-- /main -->
 
 <script>
 // ══════════════════════════════════════════
@@ -318,10 +440,11 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
 // ══════════════════════════════════════════
 let records = [];
 let lastResult = null;
+let importedRows = []; // 匯入預覽暫存
 
-// XSS 防護：跳脫 HTML 特殊字元
+// XSS 防護
 function esc(s){
-  return String(s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
 
 // ══════════════════════════════════════════
@@ -370,21 +493,18 @@ function proportionalHours(hire,yearN,rangeStart,rangeEnd,hpd){
   return{hours:days*hpd*(ovlp/denom),ovlp,denom,days,segS,segE};
 }
 
-// 請假單位（小時）
 function getUnitHours(unitVal, hpd){
   if(unitVal==='4') return hpd/2;
   if(unitVal==='8') return hpd;
   return parseFloat(unitVal);
 }
 
-// 無條件進位至請假單位（有利勞工）
+// [v4-fix BUG-3] ceilToUnit 含浮點容忍
 function ceilToUnit(hours, unitH){
   if(hours<=0) return 0;
-  // 加容忍值避免 JS 浮點誤差（如 53.5000000001 被 ceil 成 54）
   return Math.round(Math.ceil((hours-1e-9)/unitH)*unitH*100)/100;
 }
 
-// 請假單位文字
 function unitLabel(unitVal, hpd){
   if(unitVal==='0.5') return '0.5 小時';
   if(unitVal==='1')   return '1 小時';
@@ -393,7 +513,6 @@ function unitLabel(unitVal, hpd){
   return unitVal+' 小時';
 }
 
-// ── 更新單位提示 ──
 document.getElementById('leaveUnit').addEventListener('change', function(){
   const hpd=parseInt(document.getElementById('hpd').value)||8;
   const uh=getUnitHours(this.value,hpd);
@@ -416,7 +535,6 @@ function doCalc(){
   if(!hireDateVal)  return alert('請輸入到職日');
   if(!transDateVal) return alert('請輸入轉制生效日');
   if(bHoursRaw==='') return alert('請輸入 B 桶時數（若無填 0）');
-  // 驗證到職日不可晚於轉制日
   if(pd(hireDateVal) > pd(transDateVal)){
     return alert('到職日不可晚於轉制生效日，請重新確認。');
   }
@@ -433,18 +551,24 @@ function doCalc(){
   const case2 = annivThisYear < trans;
   const case1 = !case2;
 
+  // [v4-fix BUG-3] hire==trans 時，情況一的 curYearN 需保護
   let curAnnivStart, curAnnivEnd, curYearN;
   if(case1){
     const prevA = prevAnniv(hire,trans);
     curAnnivStart=prevA;
     curAnnivEnd=prevDay(annivThisYear);
-    curYearN=tenureYears(hire,prevA);
+    // BUG-3 修正：hire==trans 會讓 tenureYears(hire,prevA) 為 -1
+    // 強制 curYearN >= 0
+    curYearN=Math.max(0, tenureYears(hire,prevA));
   }else{
     curAnnivStart=annivThisYear;
     const nextA=new Date(trans.getFullYear()+1,hire.getMonth(),hire.getDate());
     curAnnivEnd=prevDay(nextA);
     curYearN=tenureYears(hire,annivThisYear);
   }
+
+  // 情況二：補給的隔年 1/1
+  const nextCalYear = trans.getFullYear()+1;
 
   let segments=[];
 
@@ -503,18 +627,13 @@ function doCalc(){
     ];
   }else{
     const calYearEnd=new Date(trans.getFullYear(),11,31);
-    const calYearStart=new Date(trans.getFullYear(),0,1);
-    const nextCalYear=trans.getFullYear()+1;
     const nextCalS=new Date(nextCalYear,0,1);
     const suppHours=proportionalHours(hire,curYearN,nextCalS,curAnnivEnd,hpd);
     const legalHours=lawDays(curYearN)*hpd;
     const prevYearN=curYearN-1;
     const prevAStart=new Date(trans.getFullYear()-1,hire.getMonth(),hire.getDate());
     const prevAEnd=prevDay(curAnnivStart);
-    const seg2Total=aHours+bHours+suppHours.hours;
-    const seg2Rounded=ceilToUnit(seg2Total,unitH);
 
-    // 情況二：active=A+B(5/1轉入)，future=補給(1/1)，分開儲存避免誤用
     const ab_raw2     = aHours + bHours;
     const ab_round2   = ceilToUnit(ab_raw2, unitH);
     const supp_raw2   = suppHours.hours;
@@ -555,6 +674,7 @@ function doCalc(){
       {
         type:'future',
         annivStart:nextCalS,annivEnd:curAnnivEnd,yearN:curYearN,
+        // [v4-fix BUG-6] 動態顯示補給年份
         label:`${nextCalYear}/01/01 補給（週年後半段）`,
         rows:[
           {label:`法定(滿${curYearN}年)`,val:`${lawDays(curYearN)*hpd} H`,note:`${lawDays(curYearN)}日×${hpd}H`},
@@ -579,14 +699,14 @@ function doCalc(){
     ];
   }
 
-  // 儲存供後續使用
   lastResult = {
     empName, hire:fmt(hire), trans:fmt(trans), baseDate:fmt(baseDate),
     aHours, bHours, hpd, unitH, uLabel, aExp:fmt(aExp),
     case1, curYearN, segments,
     annivThisYear:fmt(annivThisYear),
     hireDateVal, transDateVal,
-    aExpiryVal, unitVal
+    aExpiryVal, unitVal,
+    nextCalYear  // [v4] 傳給 renderResult
   };
 
   renderResult(lastResult);
@@ -598,7 +718,6 @@ function doCalc(){
 function renderResult(d){
   document.getElementById('result-area').style.display='block';
 
-  // 情況說明
   const caseTitle=document.getElementById('case-title');
   const caseBody=document.getElementById('case-body');
   if(d.case1){
@@ -617,20 +736,18 @@ function renderResult(d){
         <strong>${esc(d.empName)}</strong> 到職日 <strong>${d.hire}</strong>，轉制日 <strong>${d.trans}</strong> 時，
         本年到職週年日 <strong style="color:var(--purple);">${d.annivThisYear}</strong> 已過。
         目前處於 <strong style="color:var(--purple);">滿 ${d.curYearN} 年</strong>的週年區間。<br><br>
-        ✅ B 桶含本週年日後那段；隔年 1/1 起補入後半段時數。前一個週年區間已到期不補給。<br>
+        ✅ B 桶含本週年日後那段；隔年 ${d.nextCalYear}/1/1 起補入後半段時數。前一個週年區間已到期不補給。<br>
         ⚠ 基準結算日：<strong>${d.baseDate}</strong>
       </p>`;
   }
 
-  // 總覽
+  // 總覽 strip
   const strip=document.getElementById('total-strip');
   const mainSeg=d.segments.find(s=>s.type==='active');
   const futureSeg=d.segments.find(s=>s.type==='future');
   const ab_rounded = mainSeg?mainSeg.totalRounded:0;
-
   let stripHTML='';
   if(d.case1){
-    // 情況一：A桶 + B桶 = 轉入總額 | 週年日補給
     const suppRound = futureSeg?futureSeg.totalRounded:0;
     stripHTML=`
       <div class="total-seg">
@@ -654,7 +771,7 @@ function renderResult(d){
         <div class="seg-unit">小時</div>
       </div>`;
   } else {
-    // 情況二：5/1轉入 | 補給時數 | 補後合計
+    // [v4-fix BUG-6] 動態顯示補給年份
     const suppRound2 = futureSeg?futureSeg.totalRounded:0;
     const afterTotal = futureSeg&&futureSeg.afterTotal?futureSeg.afterTotal:(ab_rounded+suppRound2);
     stripHTML=`
@@ -664,7 +781,7 @@ function renderResult(d){
         <div class="seg-unit">小時</div>
       </div>
       <div class="total-seg">
-        <div class="seg-label">2027/1/1 補給（進位）</div>
+        <div class="seg-label">${d.nextCalYear}/1/1 補給（進位）</div>
         <div class="seg-num c-gold">${suppRound2.toFixed(1)}</div>
         <div class="seg-unit">小時</div>
       </div>
@@ -737,15 +854,17 @@ function renderResult(d){
   });
   tlBody.innerHTML=tlHTML;
 
-  // 提醒
+  // 操作提醒
   const rb=document.getElementById('remind-body');
+  const nextCalYear = d.nextCalYear || (parseInt(d.trans.split('/')[0])+1);
   const items=[
     {i:'⏰',t:`<strong>A 桶 ${d.aHours} 小時</strong>到期日 <strong>${d.aExp}</strong>，扣假順序最優先，到期前提醒員工消化。`},
     {i:'⚙️',t:`系統扣假順序：<strong>A 桶 → B 桶 → 週年制新額度</strong>，需請系統商在轉制前設定並測試。`},
     {i:'📐',t:`所有時數計算保留小數點二位，最終給假時無條件進位至 <strong>${d.uLabel}</strong>，確保有利於勞工。`},
+    // [v4-fix BUG-7] 動態顯示補給年份
     {i:'📅',t:d.case1
       ?`週年日 <strong>${d.annivThisYear}</strong> 到達時，補給差額（非全額），見上方公式。`
-      :`隔年 <strong>2027/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br>⚠ 補後合計 = 5/1轉入 + 補給，<strong>請勿直接補入補後合計數字</strong>。`},
+      :`隔年 <strong>${nextCalYear}/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br><span style="color:var(--red);font-weight:700;">⚠ 補後合計 = 5/1轉入 + 補給，請勿直接補入補後合計數字。</span>`},
     {i:'✅',t:`確認基準結算日 <strong>${d.baseDate}</strong> 到建檔日之間是否有人請假，若有需先還原後再建帳。`},
   ];
   rb.innerHTML=`<ul class="remind-list">${items.map(r=>`<li><span class="ri">${r.i}</span><span>${r.t}</span></li>`).join('')}</ul>`;
@@ -761,7 +880,6 @@ function saveRecord(){
   const r=lastResult;
   const mainSeg=r.segments.find(s=>s.type==='active');
   const suppSeg=r.segments.find(s=>s.type==='future');
-  // 姓名空白時自動編號：員工01、員工02…
   const autoName = (r.empName && r.empName!=='該員工')
     ? r.empName
     : `員工${String(records.length+1).padStart(2,'0')}`;
@@ -776,15 +894,12 @@ function saveRecord(){
     hpd:      r.hpd,
     uLabel:   r.uLabel,
     caseType: r.case1?'情況一':'情況二',
-    // 5/1 轉入（情況一=A+B，情況二=A+B）
     seg1Range: mainSeg?`${fmt(mainSeg.annivStart)}~${fmt(mainSeg.annivEnd)}`:'',
     seg1Raw:   mainSeg?mainSeg.totalRaw:0,
     seg1Round: mainSeg?mainSeg.totalRounded:0,
-    // 補給時數（情況一=週年日補給；情況二=1/1補給）
     seg2Range: suppSeg?`${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}`:'—',
     seg2Raw:   suppSeg?suppSeg.totalRaw:0,
     seg2Round: suppSeg?suppSeg.totalRounded:0,
-    // 補後合計（情況一不適用；情況二=A+B+補給）
     afterTotal: (suppSeg&&suppSeg.afterTotal)?suppSeg.afterTotal:
                 (mainSeg?(mainSeg.totalRounded+(suppSeg?suppSeg.totalRounded:0)):0),
     savedAt:  new Date().toLocaleString('zh-TW'),
@@ -841,7 +956,6 @@ function loadRecord(i){
   const rec = records[i];
   const rt = rec._restore;
   if(!rt){ alert('此筆記錄無法還原（舊版儲存格式）'); return; }
-  // 還原所有輸入欄位
   document.getElementById('empName').value   = rt.empName||'';
   document.getElementById('hireDate').value  = rt.hireDate||'';
   document.getElementById('transDate').value = rt.transDate||'';
@@ -850,12 +964,10 @@ function loadRecord(i){
   document.getElementById('aExpiry').value   = rt.aExpiry||'';
   document.getElementById('hpd').value       = rt.hpd||8;
   document.getElementById('leaveUnit').value = rt.unitVal||'4';
-  // 觸發單位提示更新
   const hpd = parseInt(rt.hpd)||8;
   const uh  = getUnitHours(rt.unitVal||'4', hpd);
   document.getElementById('unit-hint').textContent =
     `進位單位：${uh} 小時（計算結果無條件進位至此，有利勞工）`;
-  // 捲動到頂部並重新計算
   window.scrollTo({top:0, behavior:'smooth'});
   setTimeout(()=>doCalc(), 300);
 }
@@ -866,14 +978,13 @@ function clearAll(){
 }
 
 // ══════════════════════════════════════════
-//  匯出 XLSX
+//  匯出 XLSX — [v4-fix BUG-4] 補齊欄寬（19欄）
 // ══════════════════════════════════════════
 function exportXLSX(){
   if(!records.length){ alert('目前沒有記錄可匯出。'); return; }
 
   const wb = XLSX.utils.book_new();
 
-  // ── 工作表一：摘要 ──
   const summaryRows=[
     ['#','員工姓名','到職日','轉制日','基準結算日','情況類型',
      'A桶(H)','B桶(H)','A桶到期日','每日工時','請假單位',
@@ -898,16 +1009,15 @@ function exportXLSX(){
   });
   const ws1 = XLSX.utils.aoa_to_sheet(summaryRows);
 
-  // 欄寬
+  // [v4-fix BUG-4] 19欄欄寬（標頭19欄，欄寬也19個）
   ws1['!cols']=[
     {wch:4},{wch:14},{wch:12},{wch:12},{wch:12},{wch:10},
     {wch:8},{wch:8},{wch:12},{wch:8},{wch:16},
     {wch:22},{wch:12},{wch:12},
     {wch:22},{wch:12},{wch:12},
-    {wch:20}
+    {wch:14},{wch:20}
   ];
 
-  // 標題列樣式（黃底粗體）
   const hdrStyle={
     font:{bold:true,color:{rgb:'FFFFFF'}},
     fill:{fgColor:{rgb:'0D6B6B'}},
@@ -922,11 +1032,10 @@ function exportXLSX(){
 
   XLSX.utils.book_append_sheet(wb, ws1, '轉換結果摘要');
 
-  // ── 工作表二：說明 ──
   const infoRows=[
     ['欄位說明',''],
     ['A 桶','轉制前一天，前一年未休完已延期保留的延長特休時數'],
-    ['B 桶','轉制前一天，本年度曆年制特休剩餘時數'],
+    ['B 桶','轉制前一天，本年度曆年制特休剩餘時數（未休）'],
     ['情況一','轉制日尚未到達員工本年到職週年日→週年日補給差額（非全額）'],
     ['情況二','轉制日已超過員工本年到職週年日→隔年1/1補入後半段時數'],
     ['精確(H)','計算過程保留小數點二位的精確時數'],
@@ -935,13 +1044,13 @@ function exportXLSX(){
     ['法規依據','勞動基準法第38條'],
     ['扣假順序','A桶（延長，有到期日）→ B桶（舊制轉入）→ 週年制新額度'],
     ['',''],
+    ['⚠ 重要提醒','情況二：補入系統的只有「補給進位」欄，補後合計僅供核對，勿直接補入'],
     ['匯出時間', new Date().toLocaleString('zh-TW')],
   ];
   const ws2 = XLSX.utils.aoa_to_sheet(infoRows);
   ws2['!cols']=[{wch:16},{wch:60}];
   XLSX.utils.book_append_sheet(wb, ws2, '欄位說明');
 
-  // ── 下載 ──
   const now = new Date();
   const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
   XLSX.writeFile(wb, `特休轉換結果_${ts}.xlsx`);
@@ -957,6 +1066,284 @@ function resetForm(){
   document.getElementById('bHours').value='';
   document.getElementById('result-area').style.display='none';
   lastResult=null;
+}
+
+// ══════════════════════════════════════════
+//  XLSX 批次匯入
+// ══════════════════════════════════════════
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('importZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if(file) handleImportFile(file);
+}
+
+function handleImportFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      parseImportRows(rows);
+    }catch(err){
+      alert('XLSX 讀取失敗：'+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// 解析匯入的 XLSX rows
+function parseImportRows(rows){
+  // 找資料起始行（第一個 col0 有值、col3 有員工編號的行）
+  let dataStart = -1;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    if(r[0]&&r[3]&&r[7]&&String(r[7]).match(/\d{4}\/\d{2}\/\d{2}/)){
+      dataStart=i; break;
+    }
+  }
+  if(dataStart<0){ alert('找不到員工資料行，請確認格式是否正確。'); return; }
+
+  // 彙整：同員工可能有延長行 + 年度行
+  const empMap = {}; // key = 員工編號
+
+  for(let i=dataStart;i<rows.length;i++){
+    const r=rows[i];
+    if(!r[0]||!r[3]) continue;
+
+    const empId   = String(r[3]).trim();
+    const empName = String(r[5]||'').trim();
+    const hireDateRaw = String(r[7]||'').trim(); // YYYY/MM/DD
+    const extHours = parseFloat(r[9])||0;   // 延長可休
+    const yrHours  = parseFloat(r[10])||0;  // 年度可休
+    const unusedH  = parseFloat(r[13])||0;  // 未休(H)
+    const note     = String(r[15]||'').trim();
+
+    // 解析到期日 from 備註 "延長至YYYYMMDD"
+    let aExpFromNote = '';
+    const m = note.match(/延長至(\d{4})(\d{2})(\d{2})/);
+    if(m) aExpFromNote = `${m[1]}-${m[2]}-${m[3]}`;
+
+    if(!empMap[empId]){
+      empMap[empId]={empId, empName, hireDateRaw, aHours:0, bHours:0, aExp:'', warn:[]};
+    }
+    const emp = empMap[empId];
+
+    if(extHours>0){
+      // 延長行：A 桶 = 未休時數
+      emp.aHours = unusedH;
+      if(aExpFromNote) emp.aExp = aExpFromNote;
+    } else if(yrHours>0 || (extHours===0 && yrHours===0)){
+      // 年度行：B 桶 = 未休時數
+      // 若年度可休=0，未休也算（年假全休完的情形）
+      emp.bHours = unusedH;
+      // 若備註有延長到期且A桶尚未有到期日
+      if(aExpFromNote && !emp.aExp) emp.aExp = aExpFromNote;
+    }
+
+    // 驗證日期格式
+    if(!hireDateRaw.match(/^\d{4}\/\d{2}\/\d{2}$/)){
+      emp.warn.push('到職日格式異常');
+    }
+  }
+
+  // 轉換為陣列，驗證日期
+  const transDateVal = document.getElementById('imp-transDate').value;
+  const defaultAExp  = document.getElementById('imp-aExpiry').value;
+
+  importedRows = Object.values(empMap).map(emp=>{
+    // 轉換到職日 YYYY/MM/DD → YYYY-MM-DD
+    const hireDateVal = emp.hireDateRaw.replace(/\//g,'-');
+    // 到期日：備註優先，否則用預設
+    const aExpVal = emp.aExp || defaultAExp;
+
+    // 驗證
+    const warns = [...emp.warn];
+    if(transDateVal && hireDateVal){
+      try{
+        if(pd(hireDateVal) > pd(transDateVal)) warns.push('到職日晚於轉制日');
+      }catch(e){ warns.push('日期解析失敗'); }
+    }
+
+    return {
+      empId: emp.empId,
+      empName: emp.empName,
+      hireDateVal,
+      aHours: emp.aHours,
+      bHours: emp.bHours,
+      aExpVal,
+      warns
+    };
+  });
+
+  renderImportPreview();
+}
+
+function renderImportPreview(){
+  const tbody = document.getElementById('importTableBody');
+  const countEl = document.getElementById('imp-count');
+  const warnCountEl = document.getElementById('imp-warn-count');
+  const runCountEl = document.getElementById('imp-run-count');
+  const preview = document.getElementById('importPreview');
+
+  const validRows = importedRows.filter(r=>r.warns.length===0);
+  const warnRows  = importedRows.filter(r=>r.warns.length>0);
+
+  countEl.textContent = importedRows.length;
+  warnCountEl.textContent = warnRows.length;
+  runCountEl.textContent = validRows.length;
+
+  tbody.innerHTML = importedRows.map((r,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${esc(r.empId)}</td>
+      <td>${esc(r.empName)}</td>
+      <td>${r.hireDateVal}</td>
+      <td class="${r.aHours>0?'a-cell':''}">${r.aHours.toFixed(1)}</td>
+      <td style="font-size:11.5px;color:#888;">${r.aExpVal||'—'}</td>
+      <td class="ok-cell">${r.bHours.toFixed(2)}</td>
+      <td>${r.warns.length
+        ? `<span class="warn-cell">⚠ ${r.warns.join('、')}</span>`
+        : '<span class="ok-cell">✓</span>'}</td>
+    </tr>`).join('');
+
+  preview.style.display='block';
+}
+
+function runBatchCalc(){
+  const transDateVal = document.getElementById('imp-transDate').value;
+  const hpd     = parseInt(document.getElementById('imp-hpd').value)||8;
+  const unitVal = document.getElementById('imp-leaveUnit').value;
+
+  if(!transDateVal){ alert('請先填寫轉制生效日'); return; }
+
+  const validRows = importedRows.filter(r=>r.warns.length===0);
+  if(!validRows.length){ alert('沒有可計算的員工資料（請排除警告筆數）'); return; }
+
+  const prog = document.getElementById('importProgress');
+  const bar  = document.getElementById('progressBar');
+  const txt  = document.getElementById('progressText');
+  prog.style.display='block';
+
+  let done=0;
+  const total=validRows.length;
+  const unitH = getUnitHours(unitVal, hpd);
+  const uLabel = unitLabel(unitVal, hpd);
+
+  // 逐筆計算（同步，但用 setTimeout 讓進度條能更新）
+  function calcNext(){
+    if(done>=total){
+      txt.textContent=`✅ 完成！已加入 ${total} 筆記錄`;
+      bar.style.width='100%';
+      renderRecords();
+      document.getElementById('records-area').scrollIntoView({behavior:'smooth'});
+      return;
+    }
+    const row = validRows[done];
+    try{
+      calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel);
+    }catch(e){
+      console.warn('計算失敗：',row.empName, e);
+    }
+    done++;
+    const pct = Math.round(done/total*100);
+    bar.style.width=pct+'%';
+    txt.textContent=`計算中... ${done}/${total}`;
+    setTimeout(calcNext, 0);
+  }
+  calcNext();
+}
+
+// 單筆計算並推入 records（不顯示 UI）
+function calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel){
+  const {empId, empName, hireDateVal, aHours, bHours, aExpVal} = row;
+  const empLabel = empName ? `${empName} ${empId}` : empId;
+
+  if(!hireDateVal || pd(hireDateVal) > pd(transDateVal)) return;
+
+  const hire  = pd(hireDateVal);
+  const trans = pd(transDateVal);
+  const aExp  = aExpVal ? pd(aExpVal) : new Date(trans.getFullYear(),11,31);
+  const baseDate = prevDay(trans);
+  const nextCalYear = trans.getFullYear()+1;
+
+  const annivThisYear = new Date(trans.getFullYear(),hire.getMonth(),hire.getDate());
+  const case2 = annivThisYear < trans;
+
+  let curAnnivStart, curAnnivEnd, curYearN;
+  if(!case2){
+    const prevA = prevAnniv(hire,trans);
+    curAnnivStart=prevA;
+    curAnnivEnd=prevDay(annivThisYear);
+    curYearN=Math.max(0, tenureYears(hire,prevA));
+  }else{
+    curAnnivStart=annivThisYear;
+    const nextA=new Date(trans.getFullYear()+1,hire.getMonth(),hire.getDate());
+    curAnnivEnd=prevDay(nextA);
+    curYearN=tenureYears(hire,annivThisYear);
+  }
+
+  let mainSeg={totalRounded:0,totalRaw:0,annivStart:curAnnivStart,annivEnd:curAnnivEnd};
+  let suppSeg={totalRounded:0,totalRaw:0,annivStart:annivThisYear,annivEnd:curAnnivEnd,afterTotal:0};
+
+  if(!case2){
+    const nextAnnivDate=annivThisYear;
+    const nextYearN=curYearN+1;
+    const calYearEnd=new Date(trans.getFullYear(),11,31);
+    const preGiven=proportionalHours(hire,nextYearN,nextAnnivDate,calYearEnd,hpd);
+    const legalHours=lawDays(nextYearN)*hpd;
+    const supplementRaw=Math.max(0,legalHours-preGiven.hours);
+    mainSeg.totalRaw=aHours+bHours;
+    mainSeg.totalRounded=ceilToUnit(mainSeg.totalRaw,unitH);
+    mainSeg.annivStart=curAnnivStart;
+    mainSeg.annivEnd=prevDay(annivThisYear);
+    suppSeg.totalRaw=supplementRaw;
+    suppSeg.totalRounded=ceilToUnit(supplementRaw,unitH);
+    suppSeg.annivStart=nextAnnivDate;
+    suppSeg.annivEnd=prevDay(new Date(trans.getFullYear()+1,hire.getMonth(),hire.getDate()));
+    suppSeg.afterTotal=ceilToUnit(mainSeg.totalRaw+supplementRaw,unitH);
+  }else{
+    const nextCalS=new Date(nextCalYear,0,1);
+    const suppH=proportionalHours(hire,curYearN,nextCalS,curAnnivEnd,hpd);
+    mainSeg.totalRaw=aHours+bHours;
+    mainSeg.totalRounded=ceilToUnit(mainSeg.totalRaw,unitH);
+    mainSeg.annivStart=curAnnivStart;
+    mainSeg.annivEnd=curAnnivEnd;
+    suppSeg.totalRaw=suppH.hours;
+    suppSeg.totalRounded=ceilToUnit(suppH.hours,unitH);
+    suppSeg.annivStart=nextCalS;
+    suppSeg.annivEnd=curAnnivEnd;
+    suppSeg.afterTotal=ceilToUnit(mainSeg.totalRaw+suppH.hours,unitH);
+  }
+
+  records.push({
+    empName:   empLabel,
+    hire:      fmt(hire),
+    trans:     fmt(trans),
+    baseDate:  fmt(baseDate),
+    aHours,bHours,
+    aExp:      fmt(aExp),
+    hpd, uLabel,
+    caseType:  case2?'情況二':'情況一',
+    seg1Range: `${fmt(mainSeg.annivStart)}~${fmt(mainSeg.annivEnd)}`,
+    seg1Raw:   mainSeg.totalRaw,
+    seg1Round: mainSeg.totalRounded,
+    seg2Range: `${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}`,
+    seg2Raw:   suppSeg.totalRaw,
+    seg2Round: suppSeg.totalRounded,
+    afterTotal: suppSeg.afterTotal,
+    savedAt:   new Date().toLocaleString('zh-TW'),
+    _restore:{
+      empName:  empLabel,
+      hireDate: hireDateVal,
+      transDate:transDateVal,
+      aHours, bHours,
+      aExpiry:  aExpVal||'',
+      hpd, unitVal,
+    }
+  });
 }
 </script>
 </body>
