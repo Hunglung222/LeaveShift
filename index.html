@@ -1522,14 +1522,19 @@ function runMerge(){
   const lsColCode   = lsHdr.findIndex(h=>h.includes('假別代碼'));
   const lsColHours  = lsHdr.findIndex(h=>h.includes('可休'));
 
-  // 建立 LeaveShift 資料 map：key = 員工編號|區間
-  const lsMap = {}; // key → {可休H, row數據}
+  // 建立 LeaveShift 資料 map
+  // key = 員工編號 | 區間結束日（YYYYMMDD）
+  // 原因：震旦雲的區間起始日與 LeaveShift 可能不同（曆年制 vs 週年制切法差異），
+  // 但同一員工的「區間結束日」（週年到期日）是相同的，用結束日比對才準確。
+  const lsMap = {};
   for(let i=lsHeaderRow+1;i<lsData.length;i++){
     const r = lsData[i];
     if(!r[lsColRange] || !r[lsColEmpId]) continue;
-    const key = String(r[lsColEmpId]).trim() + '|' + String(r[lsColRange]).trim();
+    const rangeStr = String(r[lsColRange]).trim();
+    const endDate  = rangeStr.split('-').pop(); // 取結束日 YYYYMMDD
+    const key = String(r[lsColEmpId]).trim() + '|' + endDate;
     lsMap[key] = {
-      range:   String(r[lsColRange]).trim(),
+      range:   rangeStr,
       empId:   String(r[lsColEmpId]).trim(),
       empName: String(r[lsColName]||'').trim(),
       code:    String(r[lsColCode]||'d009').trim(),
@@ -1588,23 +1593,44 @@ function runMerge(){
     const range  = String(r[stColRange]||'').trim();
     const used   = parseFloat(r[stColUsed])||0;
 
-    const key = empId + '|' + range;
+    // key = 員工編號 | 區間結束日（YYYYMMDD）
+    const endDate = range.split('-').pop();
+    const key = empId + '|' + endDate;
     const lsRow = lsMap[key];
 
     let newCanRest;
+    let remarkNote = '';
     if(lsRow){
       newCanRest = lsRow.lsHours + used;
       mergedCount++;
     } else {
-      // 找不到對應 key：LS可休保持原來的（不改動）
-      newCanRest = parseFloat(r[stColCanRest])||0;
+      // 比對不到：判斷原因
+      newCanRest = used;
       notMatchedCount++;
+      // 判斷是「新進員工（無法計算週年制）」還是「區間起訖不符」
+      const lsEmpKeys = Object.keys(lsMap).filter(k=>k.startsWith(empId+'|'));
+      if(lsEmpKeys.length === 0){
+        // LeaveShift 完全沒有此員工 → 新進員工，年資尚未滿半年，無週年制時數
+        remarkNote = '[LeaveShift] 新進員工，年資未滿半年，週年制時數尚未產生，可休依原系統設定';
+      } else {
+        // LeaveShift 有此員工但此區間結束日比對不到 → 短區間（系統切法不同）
+        remarkNote = '[LeaveShift] 此區間結束日無對應週年制區間（系統切法差異），可休設為已休時數結清';
+      }
     }
 
-    // 複製整列，只更新「可休(H)」欄
+    // 複製整列，更新「可休(H)」欄 & 備註欄
     const newRow = [...r];
     newRow[stColCanRest] = newCanRest;
-    // 已休時數保持不變
+    if(remarkNote){
+      // 若原備註有內容，附加在後面；若備註欄不存在則動態補欄
+      if(stColRemark >= 0){
+        const origRemark = String(newRow[stColRemark]||'').trim();
+        newRow[stColRemark] = origRemark ? origRemark + '　' + remarkNote : remarkNote;
+      } else {
+        // 備註欄不在原格式內，補到最後一欄
+        newRow.push(remarkNote);
+      }
+    }
     outRows.push(newRow);
   }
 
@@ -1644,9 +1670,10 @@ function runMerge(){
     [`合併時間：${new Date().toLocaleString('zh-TW')}`],
     [`LeaveShift 來源：${mergeData.file1.name}`],
     [`震旦雲來源：${mergeData.file2.name}`],
-    [`比對成功：${mergedCount} 列（新可休 = LeaveShift可休 + 已休時數）`],
-    [`未比對到：${notMatchedCount} 列（保留原可休，不異動）`],
-    ['比對 key：員工編號 + 區間（兩欄同時符合）'],
+    [`比對成功：${mergedCount} 列（新可休 = LeaveShift週年制時數 + 已休時數）`],
+    [`未比對到：${notMatchedCount} 列（可休設為已休時數，讓未休歸零結清）`],
+    ['比對 key：員工編號 + 區間結束日（YYYYMMDD）'],
+    ['說明：震旦雲與LeaveShift的區間起始日可能因制度不同而有差異，以結束日比對才準確'],
   ]);
   ws2['!cols'] = [{wch:80}];
   XLSX.utils.book_append_sheet(wb, ws2, '說明');
@@ -1661,9 +1688,9 @@ function runMerge(){
   resultEl.style.display = 'block';
   resultEl.innerHTML = `
     <strong>✅ 合併完成，檔案已下載：${filename}</strong><br><br>
-    比對成功：<strong>${mergedCount}</strong> 列（新可休 = LeaveShift可休 + 已休時數）<br>
-    未比對到：<strong style="color:var(--orange)">${notMatchedCount}</strong> 列（保留原可休，不異動）<br>
-    <span style="font-size:12px;color:#666;margin-top:6px;display:block;">比對 key：員工編號 + 區間。未比對到的列請人工確認。</span>
+    比對成功：<strong>${mergedCount}</strong> 列（新可休 = LeaveShift週年制時數 + 已休時數）<br>
+    未比對到：<strong style="color:var(--orange)">${notMatchedCount}</strong> 列（可休設為已休時數，未休歸零結清）<br>
+    <span style="font-size:12px;color:#666;margin-top:6px;display:block;">比對 key：員工編號 + 區間結束日。未比對到的區間（已到期或新進員工短區間）已自動結清。</span>
   `;
   showToast(`✅ 合併完成！比對成功 ${mergedCount} 列`);
 }
