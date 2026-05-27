@@ -1073,8 +1073,39 @@ function exportShineTaCloud(){
     if(rec.caseType === '情況一'){
       const [r1s, r1e] = rec.seg1Range.split('~').map(pDate);
       const [r2s, r2e] = rec.seg2Range.split('~').map(pDate);
-      rows.push([`${d8(r1s)}-${d8(r1e)}`, eid, ename, 'd009', rec.seg1Round]);
-      rows.push([`${d8(r2s)}-${d8(r2e)}`, eid, ename, 'd009', rec.seg2Round]);
+
+      // 判斷是否為「新進員工（年資未滿半年）」
+      // 特徵：情況一且 seg1Round=0（批次一可休=0H），因為 A+B=0 或 lawDays=0
+      // 更精確的判斷：批次一結束日 < 批次一起始日 + 6個月 → 這代表批次一橫跨了還未到半年的時期
+      // 最直接的判斷：seg1Round===0 且 (aHours+bHours)>0 表示有B桶但被算進批次二
+      // → 採用最直接的方法：檢查 hire 到 trans 是否未滿半年
+      const transD  = pDate(rec.trans);
+      const baseD   = prevD(transD);
+      let monthsToBase = (baseD.getFullYear()-hire.getFullYear())*12
+                       + (baseD.getMonth()-hire.getMonth());
+      if(baseD.getDate() < hire.getDate()) monthsToBase--;
+      const isNewHire = monthsToBase < 6;
+
+      if(isNewHire){
+        // 新進員工（到職日在轉制日前未滿半年）
+        // 震旦雲切法：第一條 = 到職日 ~ 滿半年前一天，第二條 = 滿半年 ~ 週年前一天
+        // LeaveShift 算出的 seg1 是「去年到職日~今年到職日前一天」（整年），不符合震旦雲切法
+        // 需要重算成震旦雲的切法
+        const halfYr  = new Date(hire.getFullYear(), hire.getMonth()+6, hire.getDate());
+        const newR1s  = hire;
+        const newR1e  = prevD(halfYr);
+        const newR2s  = halfYr;
+        const newR2e  = prevD(new Date(hire.getFullYear()+1, hire.getMonth(), hire.getDate()));
+        // 批次一可休 = A+B（B桶曆年制結轉），用震旦雲的切法對齊結束日
+        // 批次二【不輸出】：保留震旦雲原本的 24H（系統在滿半年時給 3天×8H）
+        // 合併程式比對不到第二條 → 執行「未比對到」邏輯：可休設為已休（=0），未休歸零
+        // ⚠ 但這樣會把 24H 蓋掉！所以第二條完全不輸出，讓合併程式保留原值
+        rows.push([`${d8(newR1s)}-${d8(newR1e)}`, eid, ename, 'd009', rec.seg1Round]);
+      } else {
+        // 一般情況一：正常輸出兩條
+        rows.push([`${d8(r1s)}-${d8(r1e)}`, eid, ename, 'd009', rec.seg1Round]);
+        rows.push([`${d8(r2s)}-${d8(r2e)}`, eid, ename, 'd009', rec.seg2Round]);
+      }
     } else {
       const [r2s, r2e] = rec.seg1Range.split('~').map(pDate);
       const isJan1 = (r2s.getMonth() === 0 && r2s.getDate() === 1);
@@ -1110,8 +1141,9 @@ function exportShineTaCloud(){
     [''],
     ['【LeaveShift 產生說明】'],
     ['情況一：批次1=A桶+B桶進位，批次2=週年日補給進位'],
-    ['情況二（一般）：批次1=0H（前一個已到期週年），批次2=補後合計進位'],
-    ['情況二（1/1到職）：只有1條，區間=2026/01/01~12/31，可休H=補後合計進位'],
+    ['情況二（一般）：批次1=前一個已到期週年（可休=已休，未休歸零），批次2=補後合計進位'],
+    ['情況二（1/1到職）：只有1條，可休=補後合計進位'],
+    ['新進員工（到職未滿半年）：只輸出1條，區間=到職日~滿半年前一天，可休=A桶+B桶；第二條（滿半年~週年）合併時自動保留系統原值(24H)'],
     ['假別代碼：d009'],
     [`產生時間：${new Date().toLocaleString('zh-TW')}`],
   ]);
@@ -1604,16 +1636,27 @@ function runMerge(){
       newCanRest = lsRow.lsHours + used;
       mergedCount++;
     } else {
-      // 比對不到：判斷原因
-      newCanRest = used;
-      notMatchedCount++;
-      // 判斷是「新進員工（無法計算週年制）」還是「區間起訖不符」
-      const lsEmpKeys = Object.keys(lsMap).filter(k=>k.startsWith(empId+'|'));
+      // 比對不到：判斷原因，分三種情況
+      const origCanRest = parseFloat(r[stColCanRest])||0;
+      const lsEmpKeys   = Object.keys(lsMap).filter(k=>k.startsWith(empId+'|'));
+
       if(lsEmpKeys.length === 0){
-        // LeaveShift 完全沒有此員工 → 新進員工，年資尚未滿半年，無週年制時數
-        remarkNote = '[LeaveShift] 新進員工，年資未滿半年，週年制時數尚未產生，可休依原系統設定';
+        // LeaveShift 完全沒有此員工 → 保留原值（震旦雲已正確設定）
+        newCanRest = origCanRest;
+        notMatchedCount++;
+        remarkNote = '[LeaveShift] 此員工不在本次轉換範圍，可休保留原系統設定';
+      } else if(origCanRest > 0 && used === 0){
+        // LeaveShift 有此員工，但此區間比對不到，且原可休>0、已休=0
+        // → 這是新進員工的第二條（滿半年~週年），系統正確設定的 24H，LeaveShift 不輸出此條
+        // → 保留原值，不覆蓋
+        newCanRest = origCanRest;
+        notMatchedCount++;
+        remarkNote = '[LeaveShift] 此區間為週年制系統設定（滿半年給假），保留原可休時數';
       } else {
-        // LeaveShift 有此員工但此區間結束日比對不到 → 短區間（系統切法不同）
+        // LeaveShift 有此員工，區間結束日比對不到，且已休>0 或 可休=0
+        // → 舊制短區間或已到期段，設可休=已休讓未休歸零結清
+        newCanRest = used;
+        notMatchedCount++;
         remarkNote = '[LeaveShift] 此區間結束日無對應週年制區間（系統切法差異），可休設為已休時數結清';
       }
     }
