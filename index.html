@@ -240,7 +240,7 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
   <div class="header-badge">人資顧問工具</div>
   <h1>特休制度轉換計算器<br><span>曆年制 → 週年制</span></h1>
   <div class="header-sub">餘額移轉法｜自動判斷情況一/二｜無條件進位至請假單位｜支援多員工儲存 &amp; 匯出 XLSX
-    <span class="ver-tag">v5</span>
+    <span class="ver-tag">v6</span>
   </div>
 </div>
 
@@ -561,6 +561,21 @@ const fmtShort = d => `${d.getMonth()+1}/${d.getDate()}`;
 const addDays   = (d,n) => { const r=new Date(d); r.setDate(r.getDate()+n); return r; };
 const prevDay   = d => addDays(d,-1);
 
+// 安全建立日期：若 day 超出該月最後一天，自動退到月底
+// 例如 safeDate(2026,1,31) (即2月31) → 自動變 2026/2/28（非閏年）
+// 避免 JS new Date 的 overflow 行為（會跳到下個月）
+function safeDate(y, m, d){
+  // 取該月最後一天：new Date(y, m+1, 0) 給出下個月第0天=本月最後一天
+  const lastDay = new Date(y, m+1, 0).getDate();
+  return new Date(y, m, Math.min(d, lastDay));
+}
+// 計算 hire + N 個月（保留日期，月底自動退）
+function addMonthsSafe(hire, nMonths){
+  const y = hire.getFullYear();
+  const m = hire.getMonth() + nMonths;
+  return safeDate(y + Math.floor(m/12), ((m%12)+12)%12, hire.getDate());
+}
+
 function tenureYears(hire,ref){
   let y=ref.getFullYear()-hire.getFullYear();
   if(ref.getMonth()<hire.getMonth()||(ref.getMonth()===hire.getMonth()&&ref.getDate()<hire.getDate()))y--;
@@ -653,6 +668,94 @@ function doCalc(){
   const uLabel = unitLabel(unitVal, hpd);
 
   const annivThisYear = new Date(trans.getFullYear(),hire.getMonth(),hire.getDate());
+
+  // [v6-fix] 當年到職員工（新進員工）獨立處理 ───────────────────
+  // 採用「方案A：回歸到職日重新計算法」：
+  //   第一條（到職日 ~ 滿半年前一天）：0H（未滿半年無法定特休）
+  //   第二條（滿半年 ~ 滿一年前一天）：24H（滿半年法定 3 天，系統自動）
+  // 若曆年制原有 B 桶餘額，於備註欄提醒人資與員工協商處理（不直接寫入時數，避免多給）
+  if(hire.getFullYear() === trans.getFullYear()){
+    const halfYr   = addMonthsSafe(hire, 6);
+    const firstS   = hire;
+    const firstE   = prevDay(halfYr);
+    const secondS  = halfYr;
+    const secondE  = prevDay(safeDate(hire.getFullYear()+1, hire.getMonth(), hire.getDate()));
+    const hasBucket = (aHours + bHours) > 0;
+
+    const segments_new = [
+      {
+        type:'active',
+        annivStart:firstS, annivEnd:firstE, yearN:0,
+        label:'到職日 ~ 滿半年前一天',
+        rows:[
+          {label:'狀態', val:'0 H', note:'未滿半年，依勞基法無特休'},
+        ],
+        totalRaw:0, totalRounded:0, unitH, uLabel,
+        totalNote:'回歸到職日重新計算法，第一段為 0H',
+        formula:[
+          `// 員工於 ${fmt(hire)} 到職，依勞基法未滿半年無法定特休`,
+          `// 採方案A：回歸週年制純算法，不從曆年制 B 桶結轉`,
+          `第一段可休       : 0 H`,
+        ]
+      },
+      {
+        type:'future',
+        annivStart:secondS, annivEnd:secondE, yearN:0,
+        label:'滿半年 ~ 滿一年前一天（系統自動）',
+        rows:[
+          {label:'狀態', val:'24 H', note:'滿半年法定 3 日 × 8H'},
+        ],
+        totalRaw:24, totalRounded:24, unitH, uLabel,
+        totalNote:'震旦雲系統自動給假，LeaveShift 不介入',
+        formula:[
+          `// 員工於 ${fmt(secondS)} 滿半年，依勞基法給 3 天特休`,
+          `// 震旦雲已正確設定此區間為 24H`,
+          `區間起          : ${fmt(secondS)}（滿半年日）`,
+          `區間迄          : ${fmt(secondE)}（滿一年前一天）`,
+          `系統原值        : 24 H`,
+        ]
+      }
+    ];
+
+    // 若 A/B 桶有餘額，加入提醒區塊
+    if(hasBucket){
+      segments_new.unshift({
+        type:'expired',
+        annivStart:hire, annivEnd:prevDay(trans), yearN:0,
+        label:'⚠ 原曆年制餘額待協商',
+        rows:[
+          {label:'A 桶（延長）', val:`${aHours} H`, note:'曆年制延長餘額'},
+          {label:'B 桶（年度）', val:`${bHours} H`, note:'曆年制比例預給'},
+        ],
+        totalRaw:null, totalRounded:null, unitH, uLabel, totalNote:null,
+        formula:[
+          `// ⚠ 此員工於曆年制下原本有 A+B 桶餘額`,
+          `// 採方案A後不直接寫入新系統，請人資協商：`,
+          `//   ① 結清為工資`,
+          `//   ② 提早消化（轉成事假/特排休等）`,
+          `//   ③ 視為慰留福利併入後續特休`,
+          `A 桶             : ${aHours} H`,
+          `B 桶             : ${bHours} H`,
+          `合計待協商       : ${(aHours+bHours).toFixed(2)} H`,
+        ]
+      });
+    }
+
+    lastResult = {
+      empName, empId, hire:fmt(hire), trans:fmt(trans), baseDate:fmt(baseDate),
+      aHours, bHours, hpd, unitH, uLabel, aExp:fmt(aExp),
+      case1:true, caseType:'新進員工', curYearN:0, segments:segments_new,
+      annivThisYear:fmt(annivThisYear),
+      hireDateVal, transDateVal, aExpiryVal, unitVal,
+      nextCalYear:trans.getFullYear()+1,
+      newHire:true,
+      _bucketRemainder: aHours + bHours,  // 給匯出震旦雲時做備註
+    };
+    renderResult(lastResult);
+    return;
+  }
+  // ──────────────────────────────────────────────────────────
+
   const case2 = annivThisYear < trans;
   const case1 = !case2;
 
@@ -820,7 +923,16 @@ function renderResult(d){
 
   const caseTitle=document.getElementById('case-title');
   const caseBody=document.getElementById('case-body');
-  if(d.case1){
+  if(d.newHire){
+    caseTitle.textContent='新進員工：當年到職';
+    caseBody.innerHTML=`<span class="case-badge" style="background:var(--orange);">新進員工</span>
+      <p style="font-size:14px;line-height:1.9;color:var(--ink2);">
+        <strong>${esc(d.empName)}</strong> 到職日 <strong>${d.hire}</strong>，與轉制日 <strong>${d.trans}</strong> 同一年。<br><br>
+        ✅ 震旦雲將週年區間切為兩段：到職日~滿半年前一天（0H）、滿半年~滿一年前一天（24H）。<br>
+        ✅ LeaveShift 將 A+B 桶填入第一段（曆年制結轉），第二段由系統在滿半年時自動給假。<br>
+        ⚠ 基準結算日：<strong>${d.baseDate}</strong>
+      </p>`;
+  } else if(d.case1){
     caseTitle.textContent='情況一：轉制日尚未到達週年日';
     caseBody.innerHTML=`<span class="case-badge case-1">情況一</span>
       <p style="font-size:14px;line-height:1.9;color:var(--ink2);">
@@ -846,7 +958,13 @@ function renderResult(d){
   const futureSeg=d.segments.find(s=>s.type==='future');
   const ab_rounded = mainSeg?mainSeg.totalRounded:0;
   let stripHTML='';
-  if(d.case1){
+  if(d.newHire){
+    stripHTML=`
+      <div class="total-seg"><div class="seg-label">A 桶（延長）</div><div class="seg-num c-teal">${d.aHours}</div><div class="seg-unit">小時</div></div>
+      <div class="total-seg"><div class="seg-label">B 桶（年度）</div><div class="seg-num c-gold">${d.bHours}</div><div class="seg-unit">小時</div></div>
+      <div class="total-seg"><div class="seg-label">第一段（到~半年前一天）</div><div class="seg-num c-white">${ab_rounded.toFixed(1)}</div><div class="seg-unit">小時</div></div>
+      <div class="total-seg"><div class="seg-label">第二段（滿半年起）</div><div class="seg-num c-green">24.0</div><div class="seg-unit">小時·系統自動</div></div>`;
+  } else if(d.case1){
     const suppRound = futureSeg?futureSeg.totalRounded:0;
     stripHTML=`
       <div class="total-seg"><div class="seg-label">A 桶（延長）</div><div class="seg-num c-teal">${d.aHours}</div><div class="seg-unit">小時</div></div>
@@ -927,17 +1045,28 @@ function renderResult(d){
   const rb=document.getElementById('remind-body');
   const nextCalYear = d.nextCalYear || (parseInt(d.trans.split('/')[0])+1);
   const futureSeg2=d.segments.find(s=>s.type==='future');
-  const items=[
-    {i:'⏰',t:`<strong>A 桶 ${d.aHours} 小時</strong>到期日 <strong>${d.aExp}</strong>，扣假順序最優先，到期前提醒員工消化。`},
-    {i:'⚙️',t:`系統扣假順序：<strong>A 桶 → B 桶 → 週年制新額度</strong>，需請系統商在轉制前設定並測試。`},
-    {i:'📐',t:`所有時數計算保留小數點二位，最終給假時無條件進位至 <strong>${d.uLabel}</strong>，確保有利於勞工。`},
-    {i:'📅',t:d.case1
-      ?`週年日 <strong>${d.annivThisYear}</strong> 到達時，補給差額（非全額），見上方公式。`
-      : (futureSeg2 && futureSeg2.totalRounded > 0)
-        ? `隔年 <strong>${nextCalYear}/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br><span style="color:var(--red);font-weight:700;">⚠ 補後合計 = 5/1轉入 + 補給，請勿直接補入補後合計數字。</span>`
-        : `此員工週年日與曆年一致（1/1到職），<strong>補給時數 = 0H</strong>，無需額外補給作業。`},
-    {i:'✅',t:`確認基準結算日 <strong>${d.baseDate}</strong> 到建檔日之間是否有人請假，若有需先還原後再建帳。`},
-  ];
+  let items;
+  if(d.newHire){
+    items=[
+      {i:'🆕',t:`<strong>當年到職員工</strong>，曆年制下公司已比例預給 B 桶 <strong>${d.bHours} 小時</strong>，需由 LeaveShift 填入第一段區間。`},
+      {i:'⏰',t:`第二段（滿半年起）由震旦雲系統自動給假 24H，<strong>LeaveShift 不更新此段</strong>。`},
+      {i:'⚙️',t:`系統扣假順序：<strong>B 桶 → 週年制新額度</strong>，建議在轉制前設定並測試。`},
+      {i:'📐',t:`所有時數計算保留小數點二位，最終給假時無條件進位至 <strong>${d.uLabel}</strong>。`},
+      {i:'✅',t:`確認基準結算日 <strong>${d.baseDate}</strong> 到建檔日之間是否有請假紀錄，若有需先還原。`},
+    ];
+  } else {
+    items=[
+      {i:'⏰',t:`<strong>A 桶 ${d.aHours} 小時</strong>到期日 <strong>${d.aExp}</strong>，扣假順序最優先，到期前提醒員工消化。`},
+      {i:'⚙️',t:`系統扣假順序：<strong>A 桶 → B 桶 → 週年制新額度</strong>，需請系統商在轉制前設定並測試。`},
+      {i:'📐',t:`所有時數計算保留小數點二位，最終給假時無條件進位至 <strong>${d.uLabel}</strong>，確保有利於勞工。`},
+      {i:'📅',t:d.case1
+        ?`週年日 <strong>${d.annivThisYear}</strong> 到達時，補給差額（非全額），見上方公式。`
+        : (futureSeg2 && futureSeg2.totalRounded > 0)
+          ? `隔年 <strong>${nextCalYear}/01/01</strong> 補入「補給進位」欄的時數（見上方公式）。<br><span style="color:var(--red);font-weight:700;">⚠ 補後合計 = 5/1轉入 + 補給，請勿直接補入補後合計數字。</span>`
+          : `此員工週年日與曆年一致（1/1到職），<strong>補給時數 = 0H</strong>，無需額外補給作業。`},
+      {i:'✅',t:`確認基準結算日 <strong>${d.baseDate}</strong> 到建檔日之間是否有人請假，若有需先還原後再建帳。`},
+    ];
+  }
   rb.innerHTML=`<ul class="remind-list">${items.map(r=>`<li><span class="ri">${r.i}</span><span>${r.t}</span></li>`).join('')}</ul>`;
 
   document.getElementById('result-area').scrollIntoView({behavior:'smooth'});
@@ -966,10 +1095,12 @@ function saveRecord(){
     aExp:     r.aExp,
     hpd:      r.hpd,
     uLabel:   r.uLabel,
-    caseType: r.case1?'情況一':'情況二',
+    caseType: r.newHire ? '新進員工' : (r.case1?'情況一':'情況二'),
+    _newHire: r.newHire || false,
+    _bucketRemainder: r._bucketRemainder || 0,
     seg1Range: mainSeg?`${fmt(mainSeg.annivStart)}~${fmt(mainSeg.annivEnd)}`:'',
-    seg1Raw:   mainSeg?mainSeg.totalRaw:0,
-    seg1Round: mainSeg?mainSeg.totalRounded:0,
+    seg1Raw:   r.newHire ? 0 : (mainSeg?mainSeg.totalRaw:0),
+    seg1Round: r.newHire ? 0 : (mainSeg?mainSeg.totalRounded:0),
     seg2Range: suppSeg && suppSeg.annivStart <= suppSeg.annivEnd
                 ? `${fmt(suppSeg.annivStart)}~${fmt(suppSeg.annivEnd)}` : '—',
     seg2Raw:   suppSeg && suppSeg.annivStart <= suppSeg.annivEnd ? suppSeg.totalRaw   : 0,
@@ -1008,7 +1139,7 @@ function renderRecords(){
       <div class="rec-num">${records.length-i}</div>
       <div class="rec-info">
         <div class="rec-name">
-          <span class="rec-badge ${r.caseType==='情況一'?'c1':'c2'}">${r.caseType}</span>
+          <span class="rec-badge ${r.caseType==='情況一'?'c1':r.caseType==='情況二'?'c2':'cnew'}" ${r.caseType==='新進員工'?'style="background:var(--orange);"':''}>${r.caseType}</span>
           ${esc(r.empName)}${r.empId?` <span style="font-size:11px;color:#999;">(${esc(r.empId)})</span>`:''}
           <span style="font-size:11px;color:#aaa;margin-left:6px;">（點擊還原）</span>
         </div>
@@ -1063,58 +1194,49 @@ function exportShineTaCloud(){
   const pDate = s => { const [y,m,d]=s.split('/').map(Number); return new Date(y,m-1,d); };
   const prevD = d => { const r=new Date(d); r.setDate(r.getDate()-1); return r; };
 
-  const rows = [['區間','員工編號','員工姓名','假別代碼','可休(H)']];
+  // 第6欄「LS備註」：震旦雲匯入時會被忽略，但合併程式會讀取並寫入震旦雲備註欄
+  const rows = [['區間','員工編號','員工姓名','假別代碼','可休(H)','LS備註']];
 
   records.forEach(rec => {
     const hire  = pDate(rec.hire);
     const eid   = rec.empId  || '';
     const ename = rec.empName|| '';
 
-    if(rec.caseType === '情況一'){
+    if(rec.caseType === '新進員工'){
+      // 新進員工（當年到職）— 採方案A「回歸到職日重新計算」：
+      // 只輸出第一條（到職日~滿半年前一天），可休 = 0H（未滿半年無法定特休）
+      // 合併程式遇此會把震旦雲原本的 0H 維持不動（已休=0、可休=0 → 仍是 0）
+      // 第二條（滿半年~滿一年）不輸出，合併時保留震旦雲系統原本的 24H
+      // 若原有 A+B 桶餘額，在 LS備註欄寫入提醒，合併時會帶入震旦雲備註欄
+      const [r1s, r1e] = rec.seg1Range.split('~').map(pDate);
+      const bucket = rec._bucketRemainder || 0;
+      let note = '';
+      if(bucket > 0){
+        note = `⚠原曆年制A桶${rec.aHours}H/B桶${rec.bHours}H共${bucket}H，請人資與員工協商處理（結清工資/提早消化/慰留福利）`;
+      }
+      rows.push([`${d8(r1s)}-${d8(r1e)}`, eid, ename, 'd009', 0, note]);
+
+    } else if(rec.caseType === '情況一'){
+      // 情況一：去年(或更早)到職，本年週年日尚未到達
+      // 批次1 = 前一週年~本週年前一天，可休 = A+B進位
+      // 批次2 = 本週年~下週年前一天，可休 = 週年日補給進位
       const [r1s, r1e] = rec.seg1Range.split('~').map(pDate);
       const [r2s, r2e] = rec.seg2Range.split('~').map(pDate);
+      rows.push([`${d8(r1s)}-${d8(r1e)}`, eid, ename, 'd009', rec.seg1Round, '']);
+      rows.push([`${d8(r2s)}-${d8(r2e)}`, eid, ename, 'd009', rec.seg2Round, '']);
 
-      // 判斷是否為「新進員工（年資未滿半年）」
-      // 特徵：情況一且 seg1Round=0（批次一可休=0H），因為 A+B=0 或 lawDays=0
-      // 更精確的判斷：批次一結束日 < 批次一起始日 + 6個月 → 這代表批次一橫跨了還未到半年的時期
-      // 最直接的判斷：seg1Round===0 且 (aHours+bHours)>0 表示有B桶但被算進批次二
-      // → 採用最直接的方法：檢查 hire 到 trans 是否未滿半年
-      const transD  = pDate(rec.trans);
-      const baseD   = prevD(transD);
-      let monthsToBase = (baseD.getFullYear()-hire.getFullYear())*12
-                       + (baseD.getMonth()-hire.getMonth());
-      if(baseD.getDate() < hire.getDate()) monthsToBase--;
-      const isNewHire = monthsToBase < 6;
-
-      if(isNewHire){
-        // 新進員工（到職日在轉制日前未滿半年）
-        // 震旦雲切法：第一條 = 到職日 ~ 滿半年前一天，第二條 = 滿半年 ~ 週年前一天
-        // LeaveShift 算出的 seg1 是「去年到職日~今年到職日前一天」（整年），不符合震旦雲切法
-        // 需要重算成震旦雲的切法
-        const halfYr  = new Date(hire.getFullYear(), hire.getMonth()+6, hire.getDate());
-        const newR1s  = hire;
-        const newR1e  = prevD(halfYr);
-        const newR2s  = halfYr;
-        const newR2e  = prevD(new Date(hire.getFullYear()+1, hire.getMonth(), hire.getDate()));
-        // 批次一可休 = A+B（B桶曆年制結轉），用震旦雲的切法對齊結束日
-        // 批次二【不輸出】：保留震旦雲原本的 24H（系統在滿半年時給 3天×8H）
-        // 合併程式比對不到第二條 → 執行「未比對到」邏輯：可休設為已休（=0），未休歸零
-        // ⚠ 但這樣會把 24H 蓋掉！所以第二條完全不輸出，讓合併程式保留原值
-        rows.push([`${d8(newR1s)}-${d8(newR1e)}`, eid, ename, 'd009', rec.seg1Round]);
-      } else {
-        // 一般情況一：正常輸出兩條
-        rows.push([`${d8(r1s)}-${d8(r1e)}`, eid, ename, 'd009', rec.seg1Round]);
-        rows.push([`${d8(r2s)}-${d8(r2e)}`, eid, ename, 'd009', rec.seg2Round]);
-      }
     } else {
+      // 情況二：去年(或更早)到職，本年週年日已過
+      // 批次1 = 前一個已到期週年，可休 = 0H（合併時會被改成已休，未休歸零）
+      // 批次2 = 本年週年區間，可休 = 補後合計進位
       const [r2s, r2e] = rec.seg1Range.split('~').map(pDate);
       const isJan1 = (r2s.getMonth() === 0 && r2s.getDate() === 1);
       if(!isJan1){
         const prevAnn    = new Date(r2s.getFullYear()-1, hire.getMonth(), hire.getDate());
         const prevAnnEnd = prevD(r2s);
-        rows.push([`${d8(prevAnn)}-${d8(prevAnnEnd)}`, eid, ename, 'd009', 0]);
+        rows.push([`${d8(prevAnn)}-${d8(prevAnnEnd)}`, eid, ename, 'd009', 0, '']);
       }
-      rows.push([`${d8(r2s)}-${d8(r2e)}`, eid, ename, 'd009', rec.afterTotal]);
+      rows.push([`${d8(r2s)}-${d8(r2e)}`, eid, ename, 'd009', rec.afterTotal, '']);
     }
   });
 
@@ -1130,7 +1252,7 @@ function exportShineTaCloud(){
       alignment:{horizontal:'center', vertical:'center'}
     };
   }
-  ws['!cols'] = [{wch:22},{wch:16},{wch:14},{wch:10},{wch:10}];
+  ws['!cols'] = [{wch:22},{wch:16},{wch:14},{wch:10},{wch:10},{wch:50}];
   XLSX.utils.book_append_sheet(wb, ws, 'Sheet0');
 
   const ws2 = XLSX.utils.aoa_to_sheet([
@@ -1143,7 +1265,8 @@ function exportShineTaCloud(){
     ['情況一：批次1=A桶+B桶進位，批次2=週年日補給進位'],
     ['情況二（一般）：批次1=前一個已到期週年（可休=已休，未休歸零），批次2=補後合計進位'],
     ['情況二（1/1到職）：只有1條，可休=補後合計進位'],
-    ['新進員工（到職未滿半年）：只輸出1條，區間=到職日~滿半年前一天，可休=A桶+B桶；第二條（滿半年~週年）合併時自動保留系統原值(24H)'],
+    ['新進員工（當年到職）：只輸出1條（到職~滿半年前一天）=0H；若曆年制有A+B桶餘額，於LS備註欄提醒人資協商'],
+    ['LS備註欄：第6欄為合併程式專用，匯入震旦雲時請刪除（或留空，系統會忽略）'],
     ['假別代碼：d009'],
     [`產生時間：${new Date().toLocaleString('zh-TW')}`],
   ]);
@@ -1207,6 +1330,7 @@ function exportXLSX(){
     ['B 桶','轉制前一天，本年度曆年制特休剩餘時數（未休）'],
     ['情況一','轉制日尚未到達員工本年到職週年日→週年日補給差額（非全額）'],
     ['情況二','轉制日已超過員工本年到職週年日→隔年1/1補入後半段時數'],
+    ['新進員工','轉制當年才到職的員工→只輸出第一條（到職日~滿半年前一天）=0H；曆年制餘額（A+B桶）需與員工協商，已寫入備註欄'],
     ['精確(H)','計算過程保留小數點二位的精確時數'],
     ['進位(H)','無條件進位至請假單位後的時數（有利勞工）'],
     ['',''],
@@ -1420,6 +1544,49 @@ function calcAndStore(row, transDateVal, hpd, unitVal, unitH, uLabel){
   const nextCalYear = trans.getFullYear()+1;
 
   const annivThisYear = new Date(trans.getFullYear(),hire.getMonth(),hire.getDate());
+
+  // [v6-fix] 當年到職員工（新進員工）獨立處理 ───────────────────
+  // 採用「方案A：回歸到職日重新計算法」
+  //   第一條（到職日 ~ 滿半年前一天）：0H（未滿半年無法定特休）
+  //   第二條（滿半年 ~ 滿一年前一天）：24H（系統自動，LeaveShift 不介入）
+  // 若曆年制原有 A+B 桶餘額，記入 _bucketRemainder，匯出時於備註欄提醒人資協商
+  if(hire.getFullYear() === trans.getFullYear()){
+    const halfYr   = addMonthsSafe(hire, 6);
+    const firstS   = hire;
+    const firstE   = prevDay(halfYr);
+    const secondS  = halfYr;
+    const secondE  = prevDay(safeDate(hire.getFullYear()+1, hire.getMonth(), hire.getDate()));
+    const bucket   = aHours + bHours;
+    records.push({
+      empName:   nameDisplay,
+      empId:     idDisplay,
+      hire:      fmt(hire),
+      trans:     fmt(trans),
+      baseDate:  fmt(baseDate),
+      aHours, bHours,
+      aExp:      fmt(aExp),
+      hpd, uLabel,
+      caseType:  '新進員工',
+      seg1Range: `${fmt(firstS)}~${fmt(firstE)}`,
+      seg1Raw:   0,
+      seg1Round: 0,            // 第一條 = 0H（方案A）
+      seg2Range: `${fmt(secondS)}~${fmt(secondE)}`,
+      seg2Raw:   0,
+      seg2Round: 0,            // 第二條 LeaveShift 不輸出，合併時保留系統原值
+      afterTotal: 0,
+      _newHire:  true,
+      _bucketRemainder: bucket, // 原曆年制 A+B 桶餘額，待協商
+      savedAt:   new Date().toLocaleString('zh-TW'),
+      _restore:{
+        empName:  nameDisplay, empId: idDisplay,
+        hireDate: hireDateVal, transDate: transDateVal,
+        aHours, bHours, aExpiry: aExpVal||'', hpd, unitVal,
+      }
+    });
+    return;
+  }
+  // ──────────────────────────────────────────────────────────
+
   const case2 = annivThisYear < trans;
 
   let curAnnivStart, curAnnivEnd, curYearN;
@@ -1553,25 +1720,83 @@ function runMerge(){
   const lsColName   = lsHdr.findIndex(h=>h.includes('員工姓名'));
   const lsColCode   = lsHdr.findIndex(h=>h.includes('假別代碼'));
   const lsColHours  = lsHdr.findIndex(h=>h.includes('可休'));
+  const lsColLSNote = lsHdr.findIndex(h=>h.includes('LS備註'));  // 第6欄（新進員工B桶提醒）
 
   // 建立 LeaveShift 資料 map
   // key = 員工編號 | 區間結束日（YYYYMMDD）
   // 原因：震旦雲的區間起始日與 LeaveShift 可能不同（曆年制 vs 週年制切法差異），
   // 但同一員工的「區間結束日」（週年到期日）是相同的，用結束日比對才準確。
-  const lsMap = {};
+  //
+  // 新進員工特殊處理：
+  // LS 輸出的是「去年到職日~今年到職日前一天（0H）」+「今年到職日~週年前一天（B桶H）」
+  // 震旦雲切法是「到職日~滿半年前一天（0H）」+「滿半年~週年前一天（24H）」
+  // → LS 第二條的結束日 == 震旦雲第二條的結束日（可直接比對）
+  // → LS 第一條的結束日 != 震旦雲第一條的結束日（無法比對）
+  // 解法：偵測到新進員工（LS第一條0H 且起始日=去年同月日），
+  //       額外以「員工編號 | 震旦雲第一條結束日（滿半年前一天）」建一條指向 LS 的可休時數
+
+  // 先收集所有 LS 列，依員工分組
+  const lsRawByEmp = {}; // empId → [{rangeStr, startDate, endDate, lsHours, lsNote}]
   for(let i=lsHeaderRow+1;i<lsData.length;i++){
     const r = lsData[i];
     if(!r[lsColRange] || !r[lsColEmpId]) continue;
     const rangeStr = String(r[lsColRange]).trim();
-    const endDate  = rangeStr.split('-').pop(); // 取結束日 YYYYMMDD
-    const key = String(r[lsColEmpId]).trim() + '|' + endDate;
-    lsMap[key] = {
-      range:   rangeStr,
-      empId:   String(r[lsColEmpId]).trim(),
-      empName: String(r[lsColName]||'').trim(),
-      code:    String(r[lsColCode]||'d009').trim(),
-      lsHours: parseFloat(r[lsColHours])||0,
+    const parts    = rangeStr.split('-');
+    const empId    = String(r[lsColEmpId]).trim();
+    const entry    = {
+      rangeStr,
+      startStr: parts[0],
+      endStr:   parts[1],
+      lsHours:  parseFloat(r[lsColHours])||0,
+      empName:  String(r[lsColName]||'').trim(),
+      lsNote:   lsColLSNote>=0 ? String(r[lsColLSNote]||'').trim() : '',
     };
+    if(!lsRawByEmp[empId]) lsRawByEmp[empId] = [];
+    lsRawByEmp[empId].push(entry);
+  }
+
+  const lsMap = {};
+
+  // 日期工具（YYYYMMDD → Date）
+  const p8 = s => new Date(
+    parseInt(s.slice(0,4)), parseInt(s.slice(4,6))-1, parseInt(s.slice(6,8))
+  );
+  const d8m = d => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  // 加六個月（用全域 addMonthsSafe，處理月底 overflow）
+  const addM6 = d => addMonthsSafe(d, 6);
+
+  for(const [empId, rows] of Object.entries(lsRawByEmp)){
+    if(rows.length === 2){
+      // 兩條：可能是「舊版 LS 新進員工」、「情況一/情況二（非1/1到職）」
+      const r0 = rows.find(r=>r.lsHours===0) || rows[0];
+      const r1 = rows.find(r=>r.lsHours!==0) || rows[1];
+      const start0 = p8(r0.startStr);
+      const start1 = p8(r1.startStr);
+      const diffDays = (start1 - start0) / 86400000;
+      // 舊版 LS 新進員工特徵：r0=0H 且 r1 緊接其後（同年到職）
+      const isOldNewHire = r0.lsHours === 0 && diffDays > 0 && diffDays < 400;
+
+      if(isOldNewHire){
+        // 舊版相容：把 r1 的 B 桶時數移到「滿半年前一天」這個 key
+        const hireDate    = start1;
+        const halfYrDate  = addM6(hireDate);
+        const halfYrPrev  = new Date(halfYrDate.getFullYear(), halfYrDate.getMonth(), halfYrDate.getDate()-1);
+        const halfYrPrevStr = d8m(halfYrPrev);
+        lsMap[empId + '|' + halfYrPrevStr] = { rangeStr: r1.rangeStr, empId, empName: r1.empName, lsHours: r1.lsHours, lsNote: r0.lsNote||r1.lsNote||'', _newHire: true };
+        // 第二條保留原值（震旦雲系統設定的 24H）
+        lsMap[empId + '|' + r1.endStr] = { rangeStr: r1.rangeStr, empId, empName: r1.empName, lsHours: null, _newHireSecond: true };
+      } else {
+        // 一般情況一/二：兩條都用結束日建 key
+        for(const r of rows){
+          lsMap[empId + '|' + r.endStr] = { rangeStr: r.rangeStr, empId, empName: r.empName, lsHours: r.lsHours, lsNote: r.lsNote||'' };
+        }
+      }
+    } else {
+      // 一條：v6 新版新進員工、1/1到職員工、或單條情況
+      for(const r of rows){
+        lsMap[empId + '|' + r.endStr] = { rangeStr: r.rangeStr, empId, empName: r.empName, lsHours: r.lsHours, lsNote: r.lsNote||'' };
+      }
+    }
   }
 
   // 解析震旦雲現有匯入檔
@@ -1621,9 +1846,10 @@ function runMerge(){
     const r = stData[i];
     if(!r[stColEmpId] && !r[stColRange]) continue; // 空行跳過
 
-    const empId  = String(r[stColEmpId]||'').trim();
-    const range  = String(r[stColRange]||'').trim();
-    const used   = parseFloat(r[stColUsed])||0;
+    const empId       = String(r[stColEmpId]||'').trim();
+    const range       = String(r[stColRange]||'').trim();
+    const used        = parseFloat(r[stColUsed])||0;
+    const origCanRest = parseFloat(r[stColCanRest])||0;
 
     // key = 員工編號 | 區間結束日（YYYYMMDD）
     const endDate = range.split('-').pop();
@@ -1632,12 +1858,23 @@ function runMerge(){
 
     let newCanRest;
     let remarkNote = '';
-    if(lsRow){
+    if(lsRow && lsRow.lsHours !== null){
+      // 比對成功且有時數：新可休 = LeaveShift週年制時數 + 已休時數
       newCanRest = lsRow.lsHours + used;
       mergedCount++;
+      // 優先使用 LS備註欄的內容（含新進員工B桶協商提醒）
+      if(lsRow.lsNote){
+        remarkNote = lsRow.lsNote;
+      } else if(lsRow._newHire){
+        remarkNote = '[LeaveShift] 新進員工B桶曆年制結轉，可休已更新';
+      }
+    } else if(lsRow && lsRow.lsHours === null){
+      // 新進員工第二條（滿半年~週年）：LS 不干涉，保留震旦雲原本的 24H
+      newCanRest = origCanRest;
+      notMatchedCount++;
+      remarkNote = '[LeaveShift] 此區間為週年制系統設定（滿半年給假），保留原可休時數';
     } else {
       // 比對不到：判斷原因，分三種情況
-      const origCanRest = parseFloat(r[stColCanRest])||0;
       const lsEmpKeys   = Object.keys(lsMap).filter(k=>k.startsWith(empId+'|'));
 
       if(lsEmpKeys.length === 0){
