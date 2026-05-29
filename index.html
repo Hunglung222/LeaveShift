@@ -1866,43 +1866,40 @@ function runMerge(){
 
     let newCanRest;
     let remarkNote = '';
+
+    // 找此員工在 lsMap 中任一筆的 lsNote（用於「比對不到」時也能帶入備註）
+    const anyLsKey  = Object.keys(lsMap).find(k=>k.startsWith(empId+'|'));
+    const anyLsNote = anyLsKey ? (lsMap[anyLsKey].lsNote || '') : '';
+
     if(lsRow && lsRow.lsHours !== null){
-      // 比對成功且有時數：新可休 = LeaveShift週年制時數 + 已休時數
+      // 比對成功：新可休 = LeaveShift週年制時數 + 已休時數
       newCanRest = lsRow.lsHours + used;
       mergedCount++;
-      // 優先使用 LS備註欄的內容（含新進員工B桶協商提醒）
-      if(lsRow.lsNote){
-        remarkNote = lsRow.lsNote;
-      } else if(lsRow._newHire){
-        remarkNote = '[LeaveShift] 新進員工B桶曆年制結轉，可休已更新';
-      }
+      remarkNote = lsRow.lsNote || '';   // LS備註直接帶入，已是 * 開頭格式
     } else if(lsRow && lsRow.lsHours === null){
-      // 新進員工第二條（滿半年~週年）：LS 不干涉，保留震旦雲原本的 24H
+      // 新進員工第二條（滿半年~週年）：保留震旦雲原本的 24H，不寫備註
       newCanRest = origCanRest;
       notMatchedCount++;
-      remarkNote = '[LeaveShift] 此區間為週年制系統設定（滿半年給假），保留原可休時數';
+      remarkNote = '';
     } else {
-      // 比對不到：判斷原因，分三種情況
-      const lsEmpKeys   = Object.keys(lsMap).filter(k=>k.startsWith(empId+'|'));
+      // 比對不到：分三種情況
+      const lsEmpKeys = Object.keys(lsMap).filter(k=>k.startsWith(empId+'|'));
 
       if(lsEmpKeys.length === 0){
-        // LeaveShift 完全沒有此員工 → 保留原值（震旦雲已正確設定）
+        // 不在 LeaveShift 轉換範圍 → 保留原值，不寫備註
         newCanRest = origCanRest;
         notMatchedCount++;
-        remarkNote = '[LeaveShift] 此員工不在本次轉換範圍，可休保留原系統設定';
+        remarkNote = '';
       } else if(origCanRest > 0 && used === 0){
-        // LeaveShift 有此員工，但此區間比對不到，且原可休>0、已休=0
-        // → 這是新進員工的第二條（滿半年~週年），系統正確設定的 24H，LeaveShift 不輸出此條
-        // → 保留原值，不覆蓋
+        // 系統設定的給假區間（如 24H），保留原值，不寫備註
         newCanRest = origCanRest;
         notMatchedCount++;
-        remarkNote = '[LeaveShift] 此區間為週年制系統設定（滿半年給假），保留原可休時數';
+        remarkNote = '';
       } else {
-        // LeaveShift 有此員工，區間結束日比對不到，且已休>0 或 可休=0
-        // → 舊制短區間或已到期段，設可休=已休讓未休歸零結清
+        // 舊制短區間/已到期段 → 可休設為已休（未休歸零），帶入 lsNote 備註
         newCanRest = used;
         notMatchedCount++;
-        remarkNote = '[LeaveShift] 此區間結束日無對應週年制區間（系統切法差異），可休設為已休時數結清';
+        remarkNote = anyLsNote;  // 帶入此員工的 * 備註
       }
     }
 
@@ -1942,6 +1939,12 @@ function runMerge(){
   }
 
   // 用 biff8 輸出 .xls（OLE2 格式，與震旦雲一致）
+  // 設定 Props 讓 Excel 認得為正常檔案，避免「受保護的檢視」警告
+  if(!srcWb.Props) srcWb.Props = {};
+  srcWb.Props.Application = 'Microsoft Excel';
+  srcWb.Props.Author = 'LeaveShift';
+  srcWb.Props.LastAuthor = 'LeaveShift';
+
   const now = new Date();
   const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
   const filename = `年度可休時數匯入_${ts}.xls`;
