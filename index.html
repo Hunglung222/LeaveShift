@@ -340,10 +340,9 @@ input:focus,select:focus{outline:none;border-color:var(--teal2);background:#fff;
   </div>
   <div class="card-body">
     <div class="info-box purple-box">
-      <strong>📋 使用情境</strong>：震旦雲系統中員工可能已有請假紀錄，直接匯入會造成時數錯誤。<br>
-      本功能<strong>以震旦雲原始檔為基底，只覆寫「可休(H)」欄</strong>，計算 <strong>新可休 = LeaveShift週年制時數 + 震旦雲已休時數</strong>，<br>
-      保留原檔所有結構，輸出 <strong>.xls（震旦雲相容格式）</strong>，避免匯入時系統報錯。<br>
-      比對 key：<strong>員工編號 + 區間結束日</strong>。<strong>⚠ 檔案②請務必上傳震旦雲剛匯出的原始檔。</strong>
+      <strong>📋 使用方式</strong>：產出一份可直接複製貼上的對照表，格式與震旦雲匯入檔完全一致（欄位、員工順序相同）。<br>
+      每筆均附完整計算說明備註。下載後用 Excel 開啟 → 將「可休(H)」與「備註」欄複製貼到震旦雲原檔對應欄位即可。<br>
+      比對 key：<strong>員工編號 + 區間結束日</strong>。<strong>⚠ 檔案②請上傳震旦雲匯出的原始檔（決定排序）。</strong>
     </div>
 
     <div class="merge-grid">
@@ -1909,94 +1908,168 @@ function runMerge(){
   }
 
   // ══════════════════════════════════════════════════════
-  //  方案1：直接修改震旦雲原始 workbook，只改可休欄，保留所有原始結構
-  //  輸出 biff8(.xls)，與震旦雲匯出格式一致，避免 NullReferenceException
+  //  產出全新乾淨 xlsx（比照震旦雲原檔排序，附完整計算說明備註）
+  //  格式與震旦雲匯入格式完全一致，供人工複製貼上到震旦雲原檔
   // ══════════════════════════════════════════════════════
-  const srcWb = mergeData.file2.wb;            // 震旦雲原始 workbook
-  const srcSheetName = srcWb.SheetNames[0];
-  const srcWs = srcWb.Sheets[srcSheetName];
 
-  // 取得原始工作表範圍
-  const srcRange = XLSX.utils.decode_range(srcWs['!ref']);
+  // 計算備註：完整說明可休時數如何算出
+  const buildFullNote = (upd, r) => {
+    const eid   = String(stData[r][stColEmpId]||'').trim();
+    const rng   = String(stData[r][stColRange]||'').trim();
+    const used  = parseFloat(stData[r][stColUsed])||0;
+    const orig  = parseFloat(stData[r][stColCanRest])||0;
+    const lsKey = Object.keys(lsMap).find(k=>k.startsWith(eid+'|'));
+    const lsNote = lsKey ? (lsMap[lsKey].lsNote || '') : '';
+    const endDate = rng.split('-').pop();
+    const lsRow = lsMap[eid+'|'+endDate];
 
-  let writtenCount = 0;
-  for(const upd of rowUpdates){
-    // sheet_to_json(header:1) 的列索引 = 工作表的實際列索引（0-based）
-    const r = upd.rowIndex;
-    // 可休欄
-    const canCell = XLSX.utils.encode_cell({ r, c: stColCanRest });
-    // 直接覆寫儲存格的值與型別（數字）
-    srcWs[canCell] = { t:'n', v: upd.newCanRest, w: String(upd.newCanRest) };
-    writtenCount++;
+    let note = lsNote ? lsNote + '　' : '';  // 前段：原曆年制資料
 
-    // 備註欄（若有）
-    if(upd.remarkNote && stColRemark >= 0){
-      const remCell = XLSX.utils.encode_cell({ r, c: stColRemark });
-      const orig = srcWs[remCell] ? String(srcWs[remCell].v||'').trim() : '';
-      const txt = orig ? orig + '　' + upd.remarkNote : upd.remarkNote;
-      srcWs[remCell] = { t:'s', v: txt, w: txt };
+    if(lsRow && lsRow.lsHours !== null){
+      // 比對成功
+      const ls = lsRow.lsHours;
+      if(ls === 0 && used === 0){
+        note += `可休=0H（方案A：新進員工此段不計特休，滿半年後系統自動給24H）`;
+      } else if(ls === 0){
+        note += `可休=${upd.newCanRest}H（已到期區間，可休=已休${used}H，未休歸零）`;
+      } else {
+        note += `可休=${upd.newCanRest}H（週年制${ls}H + 已休${used}H）`;
+      }
+    } else if(lsRow && lsRow.lsHours === null){
+      note += `可休=${upd.newCanRest}H（週年制系統設定，保留原值）`;
+    } else {
+      const lsEmpKeys = Object.keys(lsMap).filter(k=>k.startsWith(eid+'|'));
+      if(lsEmpKeys.length === 0){
+        note += `可休=${upd.newCanRest}H（不在本次轉換範圍，保留原值）`;
+      } else if(orig > 0 && used === 0){
+        note += `可休=${upd.newCanRest}H（週年制系統設定，保留原值）`;
+      } else {
+        note += `可休=${upd.newCanRest}H（已到期區間，可休=已休${used}H，未休歸零）`;
+      }
     }
+    return note.trim();
+  };
+
+  // 建立輸出資料列（比照震旦雲原檔排序）
+  const outHeader = ['區間','員工編號','員工姓名','假別代碼','可休(H)',
+                     '已休時數(H)','已休調整(H)','無上限(y)','備註','停用(y)'];
+  const outRows = [outHeader];
+
+  for(const upd of rowUpdates){
+    const r = upd.rowIndex;
+    const row = stData[r];
+    // 保留原檔所有欄位，只換可休與備註
+    const newRow = [
+      String(row[stColRange]  ||'').trim(),      // 區間
+      String(row[stColEmpId]  ||'').trim(),      // 員工編號
+      String(row[stColName]   ||'').trim(),      // 員工姓名
+      String(row[stColCode]   ||'d009').trim(),  // 假別代碼
+      upd.newCanRest,                            // ★ 可休(H) 新值
+      parseFloat(row[stColUsed])||0,             // 已休時數
+      parseFloat(row[stColAdj] )||0,             // 已休調整
+      String(row[stColNoLimit]||'').trim(),      // 無上限
+      buildFullNote(upd, r),                     // ★ 備註（完整計算說明）
+      String(row[stColDisable]||'').trim(),      // 停用
+    ];
+    outRows.push(newRow);
   }
+
+  // 產出全新乾淨的 xlsx（無任何來源檔案殘留結構）
+  const outWb = XLSX.utils.book_new();
+  const outWs = XLSX.utils.aoa_to_sheet(outRows);
+
+  // 欄寬設定
+  outWs['!cols'] = [
+    {wch:22},{wch:12},{wch:12},{wch:10},{wch:9},
+    {wch:11},{wch:11},{wch:9},{wch:70},{wch:8}
+  ];
+
+  // 表頭樣式
+  const hdrStyle = {
+    font:{bold:true, color:{rgb:'FFFFFF'}},
+    fill:{fgColor:{rgb:'2C3A47'}},
+    alignment:{horizontal:'center', vertical:'center'}
+  };
+  for(let c=0; c<outHeader.length; c++){
+    const cell = XLSX.utils.encode_cell({r:0,c});
+    if(outWs[cell]) outWs[cell].s = hdrStyle;
+  }
+
+  // 可休欄(E)數字格式 + 備註欄(I)底色提示
+  for(let r=1; r<outRows.length; r++){
+    const canCell = XLSX.utils.encode_cell({r,c:4});
+    if(outWs[canCell]) outWs[canCell].s = {alignment:{horizontal:'center'}};
+    const remCell = XLSX.utils.encode_cell({r,c:8});
+    if(outWs[remCell]) outWs[remCell].s = {
+      fill:{fgColor:{rgb:'FFFBF0'}},
+      alignment:{wrapText:true, vertical:'top'}
+    };
+  }
+
+  XLSX.utils.book_append_sheet(outWb, outWs, 'Sheet0');
+
+  // 說明工作表
+  const infoWs = XLSX.utils.aoa_to_sheet([
+    ['使用說明'],
+    [''],
+    ['此檔案為 LeaveShift 計算結果對照表，請依以下步驟操作：'],
+    ['1. 從震旦雲下載「年度可休時數匯入」原始檔案'],
+    ['2. 以員工編號 + 區間對照，將本檔「可休(H)」欄數值填入原始檔的 E 欄'],
+    ['3. 視需要將「備註」欄內容填入原始檔的 I 欄'],
+    ['4. 確認無誤後，用震旦雲原始檔匯入系統'],
+    [''],
+    ['⚠ 重要：請勿直接匯入本檔案，請用震旦雲原始檔匯入'],
+    ['⚠ 本檔列順序比照震旦雲原始檔，可直接對位參照'],
+    [''],
+    ['備註說明格式：'],
+    ['* 延長可休XXH/未休XXH，年度未休XXH，A+B=XXH → 曆年制原始時數'],
+    ['  可休=XXH（週年制XXH + 已休XXH）→ 計算過程'],
+    [''],
+    [`產生時間：${new Date().toLocaleString('zh-TW')}`],
+  ]);
+  infoWs['!cols'] = [{wch:80}];
+  XLSX.utils.book_append_sheet(outWb, infoWs, '使用說明');
 
   const now = new Date();
   const ts  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
-  const filename = `年度可休時數匯入_${ts}.xlsx`;
+  const filename = `可休時數對照表_${ts}.xlsx`;
 
   try{
-    const outBuf = XLSX.write(srcWb, { bookType:'xlsx', type:'array' });
-    const blob = new Blob([outBuf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    XLSX.writeFile(outWb, filename);
+  }catch(err){
+    // XLSX.writeFile 在瀏覽器可能不支援，改用 blob 方式
+    const outBuf = XLSX.write(outWb, {bookType:'xlsx', type:'array'});
+    const blob = new Blob([outBuf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = filename;
+    a.href=url; a.download=filename;
     document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }catch(err){
-    alert('輸出失敗：'+err.message);
   }
 
-  // 顯示結果 + 對照表（即使匯入失敗也能手動填）
+  // 也直接用 blob 確保在瀏覽器正常下載
+  const outBuf2 = XLSX.write(outWb, {bookType:'xlsx', type:'array'});
+  const blob2 = new Blob([outBuf2], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url2 = URL.createObjectURL(blob2);
+  const a2 = document.createElement('a');
+  a2.href=url2; a2.download=filename;
+  document.body.appendChild(a2); a2.click();
+  document.body.removeChild(a2);
+  URL.revokeObjectURL(url2);
+
+  // 顯示結果
   const resultEl = document.getElementById('mergeResult');
   resultEl.style.display = 'block';
-  let tableRows = '';
-  for(const upd of rowUpdates){
-    const r = upd.rowIndex;
-    const eid  = String(stData[r][stColEmpId]||'').trim();
-    const name = String(stData[r][stColName]||'').trim();
-    const rng  = String(stData[r][stColRange]||'').trim();
-    const used = parseFloat(stData[r][stColUsed])||0;
-    tableRows += `<tr>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;">${esc(eid)}</td>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;">${esc(name)}</td>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;font-family:monospace;">${esc(rng)}</td>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:var(--purple);">${upd.newCanRest}</td>
-      <td style="padding:3px 8px;border-bottom:1px solid #eee;text-align:right;color:#888;">${used}</td>
-    </tr>`;
-  }
   resultEl.innerHTML = `
-    <strong>✅ 合併完成，已下載：${filename}</strong><br><br>
-    比對成功：<strong>${mergedCount}</strong> 列　未比對到：<strong style="color:var(--orange)">${notMatchedCount}</strong> 列<br>
+    <strong>✅ 對照表已下載：${filename}</strong><br><br>
+    共 <strong>${rowUpdates.length}</strong> 列（比對成功 <strong>${mergedCount}</strong> 列，系統保留/其他 <strong>${notMatchedCount}</strong> 列）<br>
     <span style="font-size:12px;color:#666;margin:6px 0;display:block;">
-      ⚠️ <strong>匯入震旦雲前請先轉存</strong>：用 Excel 開啟此檔 → 另存新檔 → 選「Excel 97-2003 活頁簿 (*.xls)」→ 存檔後用新的 .xls 檔匯入震旦雲。<br>
-      若匯入仍失敗，可參照下方對照表，直接在震旦雲匯出的原檔上手動填入可休值。
+      📋 <strong>操作步驟</strong>：從震旦雲下載原始檔 → 對照本表將「可休(H)」和「備註」欄填入 → 用原始檔匯入震旦雲<br>
+      本表排序與震旦雲原始檔一致，可直接對位複製貼上。
     </span>
-    <details style="margin-top:10px;">
-      <summary style="cursor:pointer;font-weight:700;color:var(--purple);">📋 展開可休時數對照表（${rowUpdates.length} 筆）</summary>
-      <div style="max-height:400px;overflow:auto;margin-top:8px;border:1px solid var(--border);border-radius:6px;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff;">
-          <thead><tr style="background:var(--ink2);color:#fff;position:sticky;top:0;">
-            <th style="padding:5px 8px;text-align:left;">員編</th>
-            <th style="padding:5px 8px;text-align:left;">姓名</th>
-            <th style="padding:5px 8px;text-align:left;">區間</th>
-            <th style="padding:5px 8px;text-align:right;">應填可休(H)</th>
-            <th style="padding:5px 8px;text-align:right;">已休(H)</th>
-          </tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-    </details>
   `;
-  showToast(`✅ 合併完成！已寫入 ${writtenCount} 列可休值`);
+  showToast(`✅ 對照表已下載！共 ${rowUpdates.length} 列`);
 }
 
 </script>
