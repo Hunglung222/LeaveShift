@@ -1912,42 +1912,66 @@ function runMerge(){
   //  格式與震旦雲匯入格式完全一致，供人工複製貼上到震旦雲原檔
   // ══════════════════════════════════════════════════════
 
-  // 計算備註：完整說明可休時數如何算出
+  // 計算備註：每一筆都有完整說明可休時數如何算出
   const buildFullNote = (upd, r) => {
-    const eid   = String(stData[r][stColEmpId]||'').trim();
-    const rng   = String(stData[r][stColRange]||'').trim();
-    const used  = parseFloat(stData[r][stColUsed])||0;
-    const orig  = parseFloat(stData[r][stColCanRest])||0;
-    const lsKey = Object.keys(lsMap).find(k=>k.startsWith(eid+'|'));
-    const lsNote = lsKey ? (lsMap[lsKey].lsNote || '') : '';
+    const eid     = String(stData[r][stColEmpId]||'').trim();
+    const rng     = String(stData[r][stColRange]||'').trim();
+    const used    = parseFloat(stData[r][stColUsed])||0;
+    const orig    = parseFloat(stData[r][stColCanRest])||0;
     const endDate = rng.split('-').pop();
-    const lsRow = lsMap[eid+'|'+endDate];
+    const lsRow   = lsMap[eid+'|'+endDate];
 
-    let note = lsNote ? lsNote + '　' : '';  // 前段：原曆年制資料
+    // 找此員工在 lsMap 中的第一筆（帶有曆年制說明的 lsNote）
+    const anyLsKey  = Object.keys(lsMap).find(k=>k.startsWith(eid+'|'));
+    const lsNote    = anyLsKey ? (lsMap[anyLsKey].lsNote || '') : '';
 
+    // 後段：說明可休是怎麼算出來的
+    let calc = '';
     if(lsRow && lsRow.lsHours !== null){
-      // 比對成功
       const ls = lsRow.lsHours;
       if(ls === 0 && used === 0){
-        note += `可休=0H（方案A：新進員工此段不計特休，滿半年後系統自動給24H）`;
+        // 新進員工第一條（0H）
+        calc = `可休=0H（方案A：新進員工此段不計特休，滿半年後系統自動給24H）`;
       } else if(ls === 0){
-        note += `可休=${upd.newCanRest}H（已到期區間，可休=已休${used}H，未休歸零）`;
+        // 已到期區間
+        calc = `可休=${upd.newCanRest}H（已到期區間，可休=已休${used}H，未休歸零）`;
       } else {
-        note += `可休=${upd.newCanRest}H（週年制${ls}H + 已休${used}H）`;
+        // 一般比對成功：LS未休值 + 已休 = 可休
+        calc = `可休=${upd.newCanRest}H（週年制未休${ls}H + 已休${used}H）`;
       }
     } else if(lsRow && lsRow.lsHours === null){
-      note += `可休=${upd.newCanRest}H（週年制系統設定，保留原值）`;
+      // 新進員工第二條（24H，系統設定保留）
+      calc = `可休=24H（週年制滿半年法定3天×8H，系統原設定保留）`;
     } else {
+      // 比對不到
       const lsEmpKeys = Object.keys(lsMap).filter(k=>k.startsWith(eid+'|'));
       if(lsEmpKeys.length === 0){
-        note += `可休=${upd.newCanRest}H（不在本次轉換範圍，保留原值）`;
+        // 不在轉換範圍
+        calc = `可休=${upd.newCanRest}H（不在本次轉換範圍，保留原值）`;
       } else if(orig > 0 && used === 0){
-        note += `可休=${upd.newCanRest}H（週年制系統設定，保留原值）`;
+        // 系統設定（情況一/二補給、新週年 24H 等）
+        // 說明這個值是 LeaveShift 算出的補給時數
+        if(upd.newCanRest === 24){
+          calc = `可休=24H（週年制法定給假，系統原設定保留）`;
+        } else {
+          // 找到此員工的任一 LS 值來說明補給邏輯
+          calc = `可休=${upd.newCanRest}H（週年制補給時數，LeaveShift計算後保留）`;
+        }
       } else {
-        note += `可休=${upd.newCanRest}H（已到期區間，可休=已休${used}H，未休歸零）`;
+        // 已到期舊制短區間
+        calc = `可休=${upd.newCanRest}H（已到期區間，可休=已休${used}H，未休歸零）`;
       }
     }
-    return note.trim();
+
+    // 組合：前段（曆年制原始資料）+ 後段（計算說明）
+    // 前段只放在第一條（有 lsNote 的），第二條開始 lsNote 不重複
+    // 判斷是否為「第二條以後」的區間（lsRow存在但lsNote為空，或比對不到但有lsNote可找）
+    const isFirstRow = (lsRow && lsRow.lsNote) ||
+                       (!lsRow && lsNote && !(orig>0 && used===0));
+    if(lsNote && isFirstRow){
+      return `${lsNote}　${calc}`;
+    }
+    return `* ${calc}`;
   };
 
   // 建立輸出資料列（比照震旦雲原檔排序）
